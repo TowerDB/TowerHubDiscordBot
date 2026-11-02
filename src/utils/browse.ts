@@ -1,11 +1,12 @@
 import { MessageFlags } from 'discord.js';
 import type { AutocompleteInteraction, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
-import type { Source } from '../community.js';
+import type { Source } from '../content.js';
 import { ephemeralError } from '../embeds/general.js';
 import { shareable } from '../share.js';
 import type { ListFilters, PagedResults } from '../types.js';
 import { MAX_CHOICE_NAME, MAX_CHOICES } from './discordLimits.js';
 import { truncate } from './general.js';
+import { TowerHubBusyError } from './towerhub.js';
 import { asEdit } from './replies.js';
 import { TtlCache } from './ttlCache.js';
 
@@ -126,8 +127,10 @@ export async function replyWithResults<Summary extends { slug: string }, Details
     reply = embed ? shareable(embed) : ephemeralError(title, description);
   }
   catch (error) {
-    console.error(`/${interaction.commandName} could not reach TowerHub:`, error);
-    reply = ephemeralError('TowerHub unavailable', UNAVAILABLE);
+    console.error(`/${interaction.commandName} could not get an answer from TowerHub:`, error);
+    reply = error instanceof TowerHubBusyError
+      ? ephemeralError('Too many searches', 'A lot of people are searching right now. Please try again in a minute.')
+      : ephemeralError('TowerHub unavailable', UNAVAILABLE);
   }
 
   await interaction.editReply(asEdit(reply));

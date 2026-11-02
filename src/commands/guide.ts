@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 
-import { guides } from '../community.js';
+import { guides } from '../content.js';
 import { guideEmbed, guideListEmbed } from '../embeds/guides.js';
 import type { Command, GuideFilters } from '../types.js';
 import { replyWithResults, SORT_CHOICES, suggestAuthors, suggestResults } from '../utils/browse.js';

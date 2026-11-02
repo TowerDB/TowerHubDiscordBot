@@ -4,6 +4,15 @@ import { fetchJson } from './utils/towerhub.js';
 const TTL_MS = 30 * 60_000;
 /** How long what's cached keeps being served after a failed refresh, before the next try. */
 const RETRY_MS = 60_000;
+/** While nothing has loaded, the bot keeps trying by itself, starting here and doubling up to RETRY_MS. */
+const FIRST_RETRY_MS = 5_000;
+
+/** Nothing has loaded from TowerHub yet, e.g. it was down when the bot started. Commands tell the user to wait. */
+export class GameDataNotLoadedError extends Error {
+  constructor() {
+    super('Game data has not loaded from TowerHub yet.');
+  }
+}
 
 export interface OwnedItem {
   item: Item;
@@ -27,6 +36,7 @@ interface GameData {
 let cached: GameData | undefined;
 let expiresAt = 0;
 let refreshing: Promise<void> | undefined;
+let failures = 0;
 
 async function load(): Promise<GameData> {
   const [game, mechanics] = await Promise.all([
@@ -52,11 +62,19 @@ async function refresh(): Promise<void> {
   try {
     cached = await load();
     expiresAt = Date.now() + TTL_MS;
+    failures = 0;
     console.log(`Loaded ${cached.eternals.length} eternals, ${cached.items.length} items and ${cached.glossary.length} glossary terms from TowerHub.`);
   }
   catch (error) {
-    expiresAt = Date.now() + RETRY_MS;
-    console.error(`Failed to load game data from TowerHub. Trying again in ${RETRY_MS / 1000}s:`, error);
+    failures += 1;
+    const retryMs = cached ? RETRY_MS : Math.min(RETRY_MS, FIRST_RETRY_MS * 2 ** (failures - 1));
+    expiresAt = Date.now() + retryMs;
+    console.error(`Failed to load game data from TowerHub. Trying again in ${retryMs / 1000}s:`, error);
+
+    // With nothing cached no command can run to set off the next try, so it's set off here.
+    if (!cached) {
+      setTimeout(() => void refreshGameData(), retryMs).unref();
+    }
   }
   finally {
     refreshing = undefined;
@@ -79,7 +97,7 @@ export function gameData(): GameData {
     void refreshGameData();
   }
   if (!cached) {
-    throw new Error('Game data has not loaded from TowerHub yet.');
+    throw new GameDataNotLoadedError();
   }
 
   return cached;

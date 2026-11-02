@@ -57,8 +57,9 @@ suggestions cover that, and picking one of a `name:` opens that result. `/build 
    arrive as interactions, so the Message Content intent stays **off**.
 3. **Invite the bot**, substituting your *General Information → Application ID*:
    ```
-   https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&permissions=19456&scope=bot%20applications.commands
+   https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&permissions=274877926400&scope=bot%20applications.commands
    ```
+   The permissions are View Channel, Send Messages, Embed Links and Send Messages in Threads (for **Post to channel** in threads).
    The `applications.commands` scope is what allows slash commands; without it they never appear.
 4. **Configure**:
    ```sh
@@ -88,21 +89,20 @@ inside its window, so the window moves continuously instead of resetting on a cl
 
 | Variable | Default | Scope |
 | --- | --- | --- |
-| `MAX_REQUESTS_PER_MINUTE` | 500 | Every command the bot handles, from every server and DM together. |
 | `MAX_REQUESTS_PER_SERVER_PER_MINUTE` | 50 | Every command in one server, from anyone. |
 | `MAX_REQUESTS_PER_USER_PER_MINUTE` | 10 | One person's commands, wherever they run them. |
-| `MAX_BUTTON_CLICKS_PER_MINUTE` | 1000 | Every **Post to channel** click, from every server and DM together. |
 | `MAX_BUTTON_CLICKS_PER_SERVER_PER_MINUTE` | 75 | Every button click in one server, from anyone. |
 | `MAX_BUTTON_CLICKS_PER_USER_PER_MINUTE` | 10 | One person's button clicks, wherever they click them. |
+| `MAX_SUGGESTIONS_PER_USER_PER_MINUTE` | 60 | One person's autocomplete suggestions. Past it they get none. |
+| `TOWERHUB_BOT_KEY` | required | Secret. Sent as `X-Bot-Key`; when it matches TowerHub's `RateLimit__Reads__BotKey`, TowerHub doesn't count the bot's reads. |
 
 Each must be whole and positive; anything else falls back to the default rather than leaving the
 bot unthrottled. Button clicks are counted separately from commands, so a burst of clicks
 can't lock everyone out of commands.
 
-The per-server limits keep one busy server from using up every other server's share, and the
-bot-wide limits are a safety cap above them all. DMs have no server, so only the per-user and
-bot-wide limits count them. The narrowest limit is checked first — the person, then their
-server, then the bot as a whole — and a request that is turned away consumes nothing from any of
+The per-server limits keep one busy server from using up every other server's share. There is no
+bot-wide limit. DMs have no server, so only the per-user limit counts them. The narrowest limit is
+checked first — the person, then their server — and a request that is turned away consumes nothing from any of
 them, so being throttled never eats into the budget it was just denied.
 
 When a limit is hit the command or click does nothing, and the bot replies with the same notice
@@ -201,8 +201,8 @@ and 100 Fortitude.
 
 ### Guides and builds
 
-`/guide` and `/build` ask TowerHub every time ([src/community.ts](src/community.ts)), as each search
-is its own and a deleted guide should go at once. That makes them the only commands that wait on
+`/guide` and `/build` ask TowerHub for each new search ([src/content.ts](src/content.ts)), keeping
+what it answers for 30 seconds, so a deleted guide can linger that long. That makes them the only commands that wait on
 it ([src/utils/browse.ts](src/utils/browse.ts)):
 
 - **Commands** defer, which shows Discord's loading message and allows 15 minutes instead of 3
@@ -269,7 +269,7 @@ will accept.
   windows are tested by passing timestamps rather than waiting. `replies.test.ts` covers how a
   failure is reported, depending on what the command or button had already done, and
   `markdown.test.ts` how text written by users is made safe to show.
-- **Guides and builds.** `community.test.ts` runs `/guide` and `/build` against a stubbed TowerHub:
+- **Guides and builds.** `content.test.ts` runs `/guide` and `/build` against a stubbed TowerHub:
   which address each option becomes, one match against several against none, and suggestions when
   TowerHub fails. There are no saved responses for these, as the embeds are tested with hand-written
   ones in `helpers.ts`, including text written to break them.
@@ -306,11 +306,11 @@ images/        Item icons and eternal portraits
 src/
   index.ts     Client setup, command registration, interaction dispatch, shutdown
   config.ts    Env vars, with defaults for the optional ones
-  rateLimit.ts Sliding-window throttling, bot-wide, per server and per user
+  rateLimit.ts Sliding-window throttling, per server and per user
   share.ts     The Post to channel button on private replies, and its click
   data.ts      Loads and validates the JSON files
   gameData.ts  Eternals, items and the glossary from TowerHub, cached in memory for 30 minutes
-  community.ts Guides and builds from TowerHub, never cached
+  content.ts   Guides and builds from TowerHub, cached for 30 seconds
   types.ts     Command, TowerHub's models and the content types: Eternal, Item, FaqTopic, SocialLink
   commands/    One file per command, plus registry.ts
   embeds/      The embeds, one file per concept (eternals, items, glossary…), with the shared

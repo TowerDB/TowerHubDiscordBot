@@ -3,7 +3,7 @@ import type { ChatInputCommandInteraction, MessageComponentInteraction } from 'd
 import { commands, findCommand } from './commands/registry.js';
 import { config } from './config.js';
 import { slowDown } from './embeds/general.js';
-import { refreshGameData } from './gameData.js';
+import { GameDataNotLoadedError, refreshGameData } from './gameData.js';
 import { Cooldown, RateLimiter } from './rateLimit.js';
 import { handleShare, isShareComponent } from './share.js';
 import { describeCommand, describePlace } from './utils/logging.js';
@@ -12,15 +12,32 @@ import { replyWithFailure } from './utils/replies.js';
 /** Don't let bad things happen. The show must go on */
 process.on('unhandledRejection', (reason) => console.error('Unhandled promise rejection:', reason));
 
+/** A thrown error nothing caught leaves the bot in an unknown state, so it restarts clean (the host brings it back). */
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception, exiting:', error);
+  process.exit(1);
+});
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.on(Events.Error, (error) => console.error('Discord client error:', error));
+client.on(Events.ShardDisconnect, (event, id) => console.warn(`Shard ${id} disconnected (code ${event.code}).`));
+client.on(Events.ShardReconnecting, (id) => console.warn(`Shard ${id} is reconnecting.`));
+client.on(Events.ShardResume, (id) => console.log(`Shard ${id} resumed.`));
+client.on(Events.ShardError, (error, id) => console.error(`Shard ${id} error:`, error));
+client.on(Events.Invalidated, () => {
+  console.error('Discord invalidated the session, exiting.');
+  process.exit(1);
+});
 const commandRateLimiter = new RateLimiter({
-  global: config.maxRequests,
   perServer: config.maxRequestsPerServer,
   perUser: config.maxRequestsPerUser,
 });
+/** Suggestions are a TowerHub call per keystroke, so one person can't be allowed to type endlessly. Past the limit they get none. */
+const suggestionRateLimiter = new RateLimiter({
+  perServer: Infinity,
+  perUser: config.maxSuggestionsPerUser,
+});
 const buttonRateLimiter = new RateLimiter({
-  global: config.maxButtonClicks,
   perServer: config.maxButtonClicksPerServer,
   perUser: config.maxButtonClicksPerUser,
 });
@@ -54,10 +71,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isAutocomplete()) {
     const command = findCommand(interaction.commandName);
     try {
-      await command?.autocomplete?.(interaction);
+      if (suggestionRateLimiter.check(interaction.user.id, interaction.guildId).allowed) {
+        await command?.autocomplete?.(interaction);
+      }
+      else {
+        await interaction.respond([]);
+      }
     }
     catch (error) {
-      console.error(`Autocomplete for "${interaction.commandName}" in ${describePlace(interaction)} failed:`, error);
+      if (error instanceof GameDataNotLoadedError) {
+        console.warn(`Autocomplete for "${interaction.commandName}" skipped: game data has not loaded yet.`);
+      }
+      else {
+        console.error(`Autocomplete for "${interaction.commandName}" in ${describePlace(interaction)} failed:`, error);
+      }
+      await interaction.respond([]).catch(() => undefined);
     }
     
     return;
@@ -99,7 +127,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   catch (error) {
     console.error(`${described}: failed after ${Date.now() - started}ms`, error);
-    await replyWithFailure(interaction, 'That command failed. Try again in a moment.');
+    await replyWithFailure(
+      interaction,
+      error instanceof GameDataNotLoadedError
+        ? 'Game data is still loading from TowerHub. Try again in a minute.'
+        : 'That command failed. Try again in a moment.',
+    );
   }
 });
 
@@ -145,9 +178,9 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   });
 }
 
-// Commands answer from this, so fill it before any can arrive. If TowerHub is down the bot starts anyway:
-// /faq, /socials and /help don't need it, and the game commands try again when they're next run.
-await refreshGameData();
+// Fills the game data without holding up login. Until it's in, game commands say it's loading, and if TowerHub is
+// down it keeps trying by itself. /faq, /socials and /help don't need it.
+void refreshGameData();
 
 client.login(config.token).catch((error: unknown) => {
   console.error('Failed to log in:', error);

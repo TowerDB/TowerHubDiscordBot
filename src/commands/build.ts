@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
 import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 
-import { builds } from '../community.js';
+import { builds } from '../content.js';
 import { buildEmbed, buildListEmbed } from '../embeds/builds.js';
 import { ephemeral, ephemeralError, multipleMatchesEmbed } from '../embeds/general.js';
 import { gameData, type OwnedItem } from '../gameData.js';

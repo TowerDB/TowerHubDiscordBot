@@ -1,7 +1,18 @@
 import type { BuildDetails, BuildFilters, BuildSummary, GuideFilters, GuideSummary, ListFilters, PagedResults } from './types.js';
+import { TtlCache } from './utils/ttlCache.js';
 import { fetchJson, filtered, findJson } from './utils/towerhub.js';
 
-/** Unlike game data these are never cached: each search is its own, and a deleted guide should go at once. */
+/** Held for a short while, as every search is a call to TowerHub and people repeat themselves. A deleted guide lingers this long. */
+const TTL_MS = 30_000;
+const MAX_ENTRIES = 200;
+const lists = new TtlCache<PagedResults<unknown>>(TTL_MS, MAX_ENTRIES);
+const details = new TtlCache<unknown>(TTL_MS, MAX_ENTRIES);
+
+export function clearContentCache(): void {
+  lists.clear();
+  details.clear();
+}
+
 export interface Source<Summary, Details, Filters> {
   list(filters: Filters, pageSize: number, timeoutMs?: number): Promise<PagedResults<Summary>>;
   /** Undefined when nothing has that slug. */
@@ -12,8 +23,16 @@ export interface Source<Summary, Details, Filters> {
 
 function source<Summary, Details, Filters extends ListFilters>(path: string): Source<Summary, Details, Filters> {
   return {
-    list: (filters, pageSize, timeoutMs) => fetchJson(filtered(path, { ...filters, pageSize: String(pageSize) }), timeoutMs),
-    find: (slug) => findJson(`${path}/${encodeURIComponent(slug)}`),
+    list: (filters, pageSize, timeoutMs) => {
+      const address = filtered(path, { ...filters, pageSize: String(pageSize) });
+
+      return lists.get(address, () => fetchJson(address, timeoutMs)) as Promise<PagedResults<Summary>>;
+    },
+    find: (slug) => {
+      const address = `${path}/${encodeURIComponent(slug)}`;
+
+      return details.get(address, () => findJson(address)) as Promise<Details | undefined>;
+    },
     authors: (search, timeoutMs) => fetchJson(filtered(`${path}/authors`, { search }), timeoutMs),
   };
 }

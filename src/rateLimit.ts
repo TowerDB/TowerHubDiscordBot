@@ -41,12 +41,11 @@ class SlidingWindow {
   }
 }
 
-type Scope = 'user' | 'server' | 'global';
+type Scope = 'user' | 'server';
 
 type RateLimitResult = | { allowed: true } | { allowed: false; scope: Scope; retryAfterMs: number };
 
 interface Limits {
-  global: number;
   perServer: number;
   perUser: number;
 }
@@ -62,14 +61,11 @@ function windowFor(windows: Map<string, SlidingWindow>, rateIdentifier: string, 
 }
 
 class RateLimiter {
-  private readonly global: SlidingWindow;
   private readonly perServer = new Map<string, SlidingWindow>();
   private readonly perUser = new Map<string, SlidingWindow>();
   private lastSweep = 0;
 
-  constructor(private readonly limits: Limits) {
-    this.global = new SlidingWindow(limits.global);
-  }
+  constructor(private readonly limits: Limits) {}
 
   check(userId: string, serverId: string | null, now: number = Date.now()): RateLimitResult {
     this.sweep(now);
@@ -77,7 +73,6 @@ class RateLimiter {
     const windows: { scope: Scope; window: SlidingWindow }[] = [
       { scope: 'user', window: windowFor(this.perUser, userId, this.limits.perUser) },
       ...(serverId ? [{ scope: 'server' as const, window: windowFor(this.perServer, serverId, this.limits.perServer) }] : []),
-      { scope: 'global', window: this.global },
     ];
 
     const full = windows.find(({ window }) => window.isFull(now));
