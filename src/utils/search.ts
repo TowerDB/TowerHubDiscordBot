@@ -97,8 +97,6 @@ interface LookupReplies<T> {
   plural: string;
   label: (item: T) => string;
   render: (item: T) => EmbedBuilder;
-  /** Shareable results are ephemeral with a post to channel button */
-  shareable?: boolean;
   notFound: { title: string; description: string };
 }
 
@@ -114,7 +112,7 @@ export async function replyWithBest<T>(
 
   if (only && matches.length === 1) {
     const embed = replies.render(only);
-    await interaction.reply(replies.shareable ? shareable(embed) : { embeds: [embed] });
+    await interaction.reply(shareable(embed));
 
     return;
   }
@@ -132,7 +130,7 @@ function rankMatches<T>(
   query: string,
   items: T[],
   keys: (item: T) => string[],
-  limit = Number.POSITIVE_INFINITY,
+  limit: number,
 ): T[] {
   const normalized = normalize(query);
   if (normalized === '') {

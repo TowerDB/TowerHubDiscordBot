@@ -29,10 +29,6 @@ function positiveInt(name: string, fallback: number): number {
 export const config = {
   token: required('DISCORD_TOKEN'),
   guildId: snowflake('GUILD_ID'),
-  /** Only register lobby commands to the official arkheron server */
-  lobbyGuildId: snowflake('LOBBY_GUILD_ID') ?? snowflake('GUILD_ID'),
-  /** Where /createlobby works. Unset, it works in any channel. */
-  lobbyChannelId: snowflake('LOBBY_CHANNEL_ID'),
   /** Slash commands are separate from button clicks */
   maxRequests: positiveInt('MAX_REQUESTS_PER_MINUTE', 500),
   maxRequestsPerServer: positiveInt('MAX_REQUESTS_PER_SERVER_PER_MINUTE', 50),
@@ -40,5 +36,6 @@ export const config = {
   maxButtonClicks: positiveInt('MAX_BUTTON_CLICKS_PER_MINUTE', 1000),
   maxButtonClicksPerServer: positiveInt('MAX_BUTTON_CLICKS_PER_SERVER_PER_MINUTE', 75),
   maxButtonClicksPerUser: positiveInt('MAX_BUTTON_CLICKS_PER_USER_PER_MINUTE', 10),
-  imageBaseUrl: optional('IMAGE_BASE_URL', 'https://raw.githubusercontent.com/emsimpson92/JonJBonfireBot/main/'),
+  imageBaseUrl: optional('IMAGE_BASE_URL', 'https://raw.githubusercontent.com/TowerDB/TowerHubDiscordBot/main/'),
+  towerHubUrl: optional('TOWERHUB_URL', 'https://towerhub.io'),
 } as const;

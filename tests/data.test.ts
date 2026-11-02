@@ -1,54 +1,56 @@
 // Importing data.ts runs its startup checks, so a broken JSON file fails here rather than on deploy.
+// The game data is the saved TowerHub copy that setup.ts loads.
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { keys as eternalKeys } from '../src/commands/eternals.js';
 import { keys as faqKeys } from '../src/commands/faq.js';
 import { keys as glossaryKeys } from '../src/commands/glossary.js';
 import { itemCommand, keys as itemKeys } from '../src/commands/item.js';
-import { eternals, faq, filterItems, glossary, items, itemsOf } from '../src/data.js';
+import { faq } from '../src/data.js';
+import { filterItems, gameData, itemsOf } from '../src/gameData.js';
 import { normalize } from '../src/utils/general.js';
 import { findBest, MAX_QUERY_LENGTH } from '../src/utils/search.js';
 import { choicesOf } from './helpers.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+const { eternals, glossary, items } = gameData();
+
 function duplicates(values: string[]): string[] {
   return values.filter((value, index) => values.indexOf(value) !== index);
 }
 
 describe('eternals', () => {
-  it('have unique ids and names', () => {
-    expect(duplicates(eternals.map((eternal) => eternal.id))).toEqual([]);
+  it('have unique slugs and names', () => {
+    expect(duplicates(eternals.map((eternal) => eternal.slug))).toEqual([]);
     expect(duplicates(eternals.map((eternal) => normalize(eternal.name)))).toEqual([]);
   });
 
   it.each(eternals.map((eternal) => [eternal.name, eternal] as const))('%s carries a crown, an amulet and two weapons', (_, eternal) => {
-    const slots = itemsOf(eternal).map((item) => item.slot.split(' ')[0]).sort();
+    const slots = itemsOf(eternal).map((item) => item.slot).sort();
 
     expect(slots).toEqual(['Amulet', 'Crown', 'Weapon', 'Weapon']);
   });
 
-  it('never share an item', () => {
-    expect(duplicates(eternals.flatMap((eternal) => eternal.items))).toEqual([]);
-  });
+  it('have portraits, named after their slugs', () => {
+    const missing = eternals.filter((eternal) => !existsSync(resolve(root, `images/eternals/${eternal.slug}.png`)));
 
-  it('have portraits that exist', () => {
-    const missing = eternals.filter((eternal) => eternal.imageUrl && !existsSync(resolve(root, eternal.imageUrl)));
-
-    expect(missing.map((eternal) => eternal.imageUrl)).toEqual([]);
+    expect(missing.map((eternal) => eternal.slug)).toEqual([]);
   });
 });
 
 describe('items', () => {
-  it('have unique ids', () => {
-    expect(duplicates(items.map(({ item }) => item.id))).toEqual([]);
+  it('have unique slugs', () => {
+    expect(duplicates(items.map(({ item }) => item.slug))).toEqual([]);
   });
 
-  it('have icons that exist', () => {
-    const missing = items.filter(({ item }) => item.icon && !existsSync(resolve(root, item.icon)));
+  // Refill Consumables never had one, and an embed simply goes without a missing thumbnail.
+  it('have icons, named after their slugs', () => {
+    const missing = items.filter(({ item }) => !existsSync(resolve(root, `images/items/${item.slug}.png`)));
 
-    expect(missing.map(({ item }) => item.icon)).toEqual([]);
+    expect(missing.map(({ item }) => item.slug)).toEqual(['refill-consumables']);
   });
 
   it('are each reachable through one of /item\'s slot choices', () => {
@@ -58,20 +60,34 @@ describe('items', () => {
     expect(unreachable.map(({ item }) => `${item.name} (${item.slot})`)).toEqual([]);
   });
 
+  // The item embed labels a weapon's abilities by their order.
   it('give weapons a primary and a secondary ability', () => {
-    const weapons = items.filter(({ item }) => item.slot.startsWith('Weapon'));
-    const wrong = weapons.filter(({ item }) => item.abilities.map((ability) => ability.input).join('+') !== 'primary+secondary');
+    const weapons = items.filter(({ item }) => item.slot === 'Weapon');
 
-    expect(wrong.map(({ item }) => item.name)).toEqual([]);
+    expect(weapons.filter(({ item }) => item.abilities.length !== 2).map(({ item }) => item.name)).toEqual([]);
   });
 });
 
 // A key shared by two entries makes the lookup list both instead of answering.
 describe('lookups', () => {
-  it.each(items.flatMap((owned) => [owned.item.name, owned.item.id, ...(owned.item.aliases ?? [])].map((key) => [key, owned] as const)))(
+  it.each(items.flatMap((owned) => [owned.item.name, owned.item.slug].map((key) => [key, owned] as const)))(
     '/item name:%s finds only that item',
     (key, owned) => {
       expect(findBest(key, items, itemKeys)).toEqual([owned]);
+    },
+  );
+
+  it.each(items.filter(({ eternal }) => eternal).map((owned) => [`${owned.eternal?.name}'s ${owned.item.name}`, owned] as const))(
+    '/item name:%s finds that item by the name the wiki uses',
+    (key, owned) => {
+      expect(findBest(key, items, itemKeys)).toEqual([owned]);
+    },
+  );
+
+  it.each(eternals.flatMap((eternal) => eternalKeys(eternal).map((key) => [key, eternal] as const)))(
+    '/eternals name:%s finds only that eternal',
+    (key, eternal) => {
+      expect(findBest(key, eternals, eternalKeys)).toEqual([eternal]);
     },
   );
 
@@ -97,13 +113,14 @@ describe('lookups', () => {
   });
 
   // The eternal embed's footer promises that /glossary explains any tag.
-  it('every ability tag is a glossary term or alias', () => {
+  it('every mechanic is a glossary term', () => {
     const terms = new Set(glossary.flatMap(glossaryKeys).map(normalize));
-    const tags = new Set([
-      ...eternals.flatMap((eternal) => eternal.coreAbility.tags),
-      ...items.flatMap(({ item }) => item.abilities.flatMap((ability) => ability.tags ?? [])),
-    ]);
+    const abilities = [
+      ...eternals.flatMap((eternal) => (eternal.ability ? [eternal.ability] : [])),
+      ...items.flatMap(({ item }) => item.abilities),
+    ];
+    const mechanics = new Set(abilities.flatMap((ability) => ability.mechanics.map((mechanic) => mechanic.name)));
 
-    expect([...tags].filter((tag) => !terms.has(normalize(tag)))).toEqual([]);
+    expect([...mechanics].filter((mechanic) => !terms.has(normalize(mechanic)))).toEqual([]);
   });
 });

@@ -1,15 +1,13 @@
 import { SlashCommandBuilder } from 'discord.js';
 
-import { filterItems, type OwnedItem } from '../data.js';
 import { randomBuildEmbed } from '../embeds/builds.js';
 import { ephemeral } from '../embeds/general.js';
+import { filterItems, type OwnedItem } from '../gameData.js';
 import type { Command } from '../types.js';
 
-const inRotation = ({ eternal }: OwnedItem) => !eternal || eternal.inRotation;
+const inRotation = ({ eternal }: OwnedItem) => !eternal || eternal.isActive;
 
-const crowns = filterItems(null, 'crown').filter(inRotation);
-const amulets = filterItems(null, 'amulet').filter(inRotation);
-const weapons = filterItems(null, 'weapon').filter(inRotation);
+const poolFor = (slot: string) => filterItems(null, slot).filter(inRotation);
 
 function pickDistinct<T>(pool: T[], count: number): T[] {
   const remaining = [...pool];
@@ -30,7 +28,7 @@ export const randomBuildCommand: Command = {
   examples: ['/randombuild'],
 
   async execute(interaction) {
-    const build = [...pickDistinct(crowns, 1), ...pickDistinct(amulets, 1), ...pickDistinct(weapons, 2)];
+    const build = [...pickDistinct(poolFor('crown'), 1), ...pickDistinct(poolFor('amulet'), 1), ...pickDistinct(poolFor('weapon'), 2)];
     await interaction.reply(ephemeral(randomBuildEmbed(build)));
   },
 };

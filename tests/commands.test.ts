@@ -1,24 +1,16 @@
 // Importing the registry builds every command, and the builders throw on anything Discord would
 // refuse to register: bad names, descriptions over 100 characters, more than 25 choices.
-import type { ChatInputCommandInteraction } from 'discord.js';
+import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { lobbyCreateCommand } from '../src/commands/createlobby.js';
-import { commands, commandsIn, findCommand, registrations } from '../src/commands/registry.js';
-import { config } from '../src/config.js';
-import { slowDown } from '../src/embeds/general.js';
-import { lobbyStore, MAX_OWNED_LOBBIES } from '../src/lobbies.js';
-import type { Command } from '../src/types.js';
+import { buildCommand } from '../src/commands/build.js';
+import { eternalsCommand } from '../src/commands/eternals.js';
+import { itemCommand } from '../src/commands/item.js';
+import { randomBuildCommand } from '../src/commands/randombuild.js';
+import { commands, findCommand } from '../src/commands/registry.js';
+import { gameData } from '../src/gameData.js';
 
 const byName = commands.map((command) => [command.data.name, command] as const);
-
-/** Set by vitest.config.ts. */
-const LOBBY_SERVER = config.lobbyGuildId as string;
-const OTHER_SERVER = '100000000000000002';
-const LOBBY_COMMANDS = ['createlobby', 'lobbies', 'lobbyadd', 'lobbykick'];
-
-const namesOf = (list: Command[] | undefined) => (list ?? []).map((command) => command.data.name);
-const lobbyNamesIn = (list: Command[] | undefined) => namesOf(list).filter((name) => LOBBY_COMMANDS.includes(name));
 
 describe('commands', () => {
   it('have unique names', () => {
@@ -27,8 +19,8 @@ describe('commands', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it.each(byName)('/%s is found by its name in the lobby server', (name, command) => {
-    expect(findCommand(name, LOBBY_SERVER)).toBe(command);
+  it.each(byName)('/%s is found by its name', (name, command) => {
+    expect(findCommand(name)).toBe(command);
   });
 
   // /help shows these, so a copy-pasted usage line would teach the wrong command.
@@ -48,75 +40,101 @@ describe('commands', () => {
 
     expect(Boolean(command.autocomplete)).toBe(wantsAutocomplete);
   });
-});
 
-// The lobby feature is for one server only, so nobody else should see it or be able to run it.
-describe('lobby commands', () => {
-  it.each(byName)('/%s is only found outside the lobby server if it is not a lobby command', (name, command) => {
-    const expected = LOBBY_COMMANDS.includes(name) ? undefined : command;
+  // Registered once at startup, so a pick-list of eternals would miss any TowerHub adds later.
+  it.each([[eternalsCommand, 'name'], [itemCommand, 'eternal'], [buildCommand, 'eternal']] as const)('%# looks eternals up live', (command, optionName) => {
+    const option = command.data.options?.find((candidate) => candidate.name === optionName);
 
-    expect(findCommand(name, OTHER_SERVER)).toBe(expected);
-    expect(findCommand(name, null)).toBe(expected);
-  });
-
-  // /help lists these, so it mustn't advertise lobby commands where they don't exist.
-  it('are only listed in the lobby server', () => {
-    expect(namesOf(commandsIn(LOBBY_SERVER))).toEqual(expect.arrayContaining(LOBBY_COMMANDS));
-    expect(lobbyNamesIn(commandsIn(OTHER_SERVER))).toEqual([]);
-    expect(namesOf(commandsIn(null))).toEqual(namesOf(commandsIn(OTHER_SERVER)));
-  });
-
-  it('register only to the lobby server, with the rest global', () => {
-    const targets = registrations(undefined, LOBBY_SERVER);
-
-    expect([...targets.keys()]).toEqual([undefined, LOBBY_SERVER]);
-    expect(namesOf(targets.get(LOBBY_SERVER)).sort()).toEqual([...LOBBY_COMMANDS].sort());
-    expect(namesOf(targets.get(undefined))).toEqual(namesOf(commandsIn(OTHER_SERVER)));
-  });
-
-  // Registering replaces everything a server had, so two lists for one server would undo each other.
-  it('register in one go when testing in the lobby server', () => {
-    const targets = registrations(LOBBY_SERVER, LOBBY_SERVER);
-
-    expect([...targets.keys()]).toEqual([LOBBY_SERVER]);
-    expect(targets.get(LOBBY_SERVER)).toEqual(commands);
-  });
-
-  it('register nowhere without a lobby server', () => {
-    const targets = registrations(undefined, undefined);
-
-    expect([...targets.keys()]).toEqual([undefined]);
-    expect(lobbyNamesIn(targets.get(undefined))).toEqual([]);
+    expect(option).toMatchObject({ autocomplete: true });
   });
 });
 
-/** /createlobby from `userId`, answered as Discord would. */
-async function createLobby(userId: string, code: string) {
-  const interaction = {
-    inGuild: () => true,
-    guildId: 'guild',
-    channelId: 'channel',
-    user: { id: userId, tag: userId, displayName: userId },
-    member: null,
-    options: { getString: (name: string) => ({ code, region: 'Europe' } as Record<string, string>)[name] ?? null },
-    client: { channels: { fetch: vi.fn(async () => null) } },
-    reply: vi.fn<(options: unknown) => Promise<unknown>>(async () => ({ resource: { message: { id: `post${code}` } } })),
-    followUp: vi.fn(),
-  };
-  await lobbyCreateCommand.execute(interaction as unknown as ChatInputCommandInteraction);
+/** Runs a command with these options and returns what it replies with. */
+async function run(command: typeof itemCommand, options: Record<string, string | null>) {
+  const reply = vi.fn();
+  const interaction = { options: { getString: (name: string) => options[name] ?? null }, reply };
+  await command.execute(interaction as unknown as ChatInputCommandInteraction);
 
-  return interaction.reply.mock.calls[0]?.[0];
+  return reply.mock.calls[0]?.[0];
 }
 
-describe('/createlobby', () => {
-  // Telling them the real reason would show someone draining the pool how to get around it.
-  it(`gives the rate limit notice to a player who created ${MAX_OWNED_LOBBIES} lobbies that are still open`, async () => {
-    for (let n = 0; n < MAX_OWNED_LOBBIES; n += 1) {
-      await createLobby('owner', `OWNED${n}`);
-      const lobby = lobbyStore.lobbyOf('owner');
-      lobbyStore.join(lobby!, { id: `player${n}`, name: 'Player' });
-    }
+/** Runs autocomplete with `focused` being typed, and returns the choices it offers. */
+async function suggest(command: typeof itemCommand, focused: { name: string; value: string }, options: Record<string, string | null> = {}) {
+  const respond = vi.fn();
+  const interaction = {
+    options: {
+      getFocused: (full?: boolean) => (full ? focused : focused.value),
+      getString: (name: string) => options[name] ?? null,
+    },
+    respond,
+  };
+  await command.autocomplete?.(interaction as unknown as AutocompleteInteraction);
 
-    expect(await createLobby('owner', 'ONEMOR')).toEqual(slowDown('ephemeral'));
+  return (respond.mock.calls[0]?.[0] ?? []) as { name: string; value: string }[];
+}
+
+describe('/eternals', () => {
+  it('suggests eternals, naming them and sending the slug', async () => {
+    expect(await suggest(eternalsCommand, { name: 'name', value: 'dah' })).toEqual([{ name: 'Dahla', value: 'dahla' }]);
+  });
+
+  it.each(['dahla', 'Dahla', 'dahlaa'])('finds name:%s, picked or just typed', async (name) => {
+    const { embeds } = await run(eternalsCommand, { name });
+
+    expect(embeds[0].data.title).toBe('Dahla — The Dancer');
+  });
+
+  it('says so when nothing matches', async () => {
+    const { embeds } = await run(eternalsCommand, { name: 'zzzzzzzz' });
+
+    expect(embeds[0].data.title).toBe('No such eternal');
+  });
+});
+
+describe('/item', () => {
+  it('suggests Echo and every eternal for the eternal option', async () => {
+    const choices = await suggest(itemCommand, { name: 'eternal', value: '' });
+
+    expect(choices.map((choice) => choice.value)).toEqual(['echo', ...gameData().eternals.map((eternal) => eternal.slug)]);
+  });
+
+  it('narrows name suggestions to the chosen eternal and slot', async () => {
+    const choices = await suggest(itemCommand, { name: 'name', value: '' }, { eternal: 'dahla', slot: 'crown' });
+
+    expect(choices).toEqual([{ name: 'Vanish Crown', value: 'Vanish Crown' }]);
+  });
+
+  it('ignores an eternal it cannot place when suggesting names', async () => {
+    expect((await suggest(itemCommand, { name: 'name', value: 'vanish' }, { eternal: 'zzzzzzzz' })).length).toBeGreaterThan(0);
+  });
+
+  it.each(['dahla', 'Dahla'])('browses by eternal:%s, picked or just typed', async (eternal) => {
+    const { embeds } = await run(itemCommand, { eternal, slot: 'crown' });
+
+    expect(embeds[0].data.title).toBe('Vanish Crown');
+  });
+
+  it('says so when the eternal matches nothing', async () => {
+    const { embeds } = await run(itemCommand, { eternal: 'zzzzzzzz' });
+
+    expect(embeds[0].data.title).toBe('No such eternal');
+  });
+
+  it('titles a list by the name of whose items they are', async () => {
+    const { embeds } = await run(itemCommand, { eternal: 'echo', slot: 'weapon' });
+
+    expect(embeds[0].data.title).toBe('Echo · Weapons');
+  });
+});
+
+describe('/randombuild', () => {
+  it.each(Array.from({ length: 50 }, (_, roll) => [roll]))('rolls a crown, an amulet and two different weapons, none out of rotation (roll %i)', async () => {
+    const { embeds } = await run(randomBuildCommand, {});
+    const lines: string[] = embeds[0].data.description.split('\n');
+    const benched = gameData().eternals.filter((eternal) => !eternal.isActive).map((eternal) => eternal.name);
+
+    expect(lines.map((line) => line.split('`')[1])).toEqual(['Crown', 'Amulet', 'Weapon', 'Weapon']);
+    expect(new Set(lines).size).toBe(4);
+    expect(lines.filter((line) => benched.some((name) => line.includes(`*${name}*`)))).toEqual([]);
   });
 });

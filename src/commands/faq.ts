@@ -33,7 +33,6 @@ export const faqCommand: Command = {
       plural: 'topics',
       label: (entry) => entry.topic,
       render: faqTopicEmbed,
-      shareable: true,
       notFound: { title: 'Topic not found', description: `No FAQ topic \`${query}\`. Run /faq to see every topic.` },
     });
   },

@@ -1,100 +1,40 @@
-import { eternals, type OwnedItem } from '../data.js';
-import { publicUrl } from '../utils/images.js';
-import type { ItemAbility, Stats } from '../types.js';
+import { ECHO, type ItemOwner, type OwnedItem } from '../gameData.js';
+import type { Ability, Item } from '../types.js';
+import { abilityBlock } from '../utils/abilities.js';
 import { embedLength, MAX_FIELD_VALUE, MAX_MESSAGE_CHARS } from '../utils/discordLimits.js';
-import { truncate } from '../utils/general.js';
-import { itemUrl, restates } from '../utils/items.js';
+import { capitalize, truncate } from '../utils/general.js';
+import { itemIcon } from '../utils/images.js';
+import { eternalLink, itemLink, itemsUrl, itemUrl } from '../utils/towerhub.js';
 import { baseEmbed } from './general.js';
 
 const MAX_EMBEDS = 3;
 
-/** Weapons bind two abilities; crown and amulet abilities have no input to label. */
-function inputLabel(ability: ItemAbility): string | undefined {
-  if (!ability.input) {
-    return undefined;
-  }
+const WEAPON_INPUTS = ['Primary', 'Secondary'];
 
-  return ability.input === 'primary' ? 'Primary' : 'Secondary';
-}
-
-function statLine(stats: Stats): string {
-  return Object.entries(stats).map(([label, value]) => `**${label}**: ${value}`).join('\n');
-}
-
-/**
- * Base stats in full, then one row per upgrade tier showing only what it adds.
- * Tiers that change nothing are not stored, which is why the labels can skip.
- */
-function statsBlock(ability: ItemAbility): string {
-  const rows = [statLine(ability.stats)];
-
-  for (const upgrade of ability.upgrades ?? []) {
-    const parts: string[] = [];
-
-    if (upgrade.changes) {
-      parts.push(statLine(upgrade.changes));
-    }
-    if (upgrade.effect && !(upgrade.changes && restates(upgrade.effect, upgrade.changes))) {
-      parts.push(upgrade.effect);
-    }
-    if (parts.length) {
-      rows.push(`\`${upgrade.tier}\` ${parts.join(' — ')}`);
-    }
-  }
-
-  return rows.join('\n');
-}
-
-/**
- * Renders one ability's body. The name is not included: each ability gets its
- * own embed field, and abilityField puts the name, with its input label, on it.
- */
-function abilityBlock(ability: ItemAbility): string {
-  const lines: string[] = [];
-
-  if (ability.description) {
-    lines.push(ability.description);
-  }
-
-  if (ability.tags?.length) {
-    lines.push(ability.tags.map((tag) => `\`${tag}\``).join(' '));
-  }
-  lines.push(statsBlock(ability));
-
-  return lines.join('\n');
-}
-
-function abilityField(ability: ItemAbility) {
-  const label = inputLabel(ability);
+/** Weapons bind two abilities, primary first; crown and amulet abilities have no input to label. */
+function abilityField(item: Item, ability: Ability, index: number) {
+  const label = item.slot === 'Weapon' ? WEAPON_INPUTS[index] : undefined;
   return {
     name: label ? `${label} · ${ability.name}` : ability.name,
     value: truncate(abilityBlock(ability), MAX_FIELD_VALUE),
   };
 }
 
-function detailEmbed(owned: OwnedItem) {
-  const { item, eternal } = owned;
+function detailEmbed({ item, eternal }: OwnedItem) {
+  const owner = eternal && [`**${eternalLink(eternal)}**`, eternal.title].filter(Boolean).join(', ');
+  const stacks = item.maxStackCount > 1 ? `Stacks to ${item.maxStackCount}` : undefined;
+  const subtitle = [item.slot, owner, stacks].filter(Boolean).join(' · ');
 
-  const subtitle = eternal ? `${item.slot} · **${eternal.name}**, ${eternal.title}` : item.slot;
-  const body = [subtitle, item.description].filter(Boolean).join('\n\n');
+  // Consumables repeat their ability's description as their own, and it's shown with the ability.
+  const repeated = item.abilities.some((ability) => ability.description === item.description);
+  const body = [subtitle, repeated ? null : item.description, item.lore && `*${item.lore}*`].filter(Boolean).join('\n\n');
 
-  const embed = baseEmbed(item.name, body);
-  const url = itemUrl(owned);
-  if (url) {
-    embed.setURL(url);
-  }
-  if (item.icon) {
-    embed.setThumbnail(publicUrl(item.icon));
-  }
-
+  const embed = baseEmbed(item.name, body).setURL(itemUrl(item)).setThumbnail(itemIcon(item));
   if (item.abilities.length) {
-    embed.addFields(...item.abilities.map(abilityField));
-  }
-  else if (item.stats) {
-    embed.addFields({ name: 'Stats', value: statLine(item.stats) });
+    embed.addFields(...item.abilities.map((ability, index) => abilityField(item, ability, index)));
   }
 
-  return eternal ? embed.setFooter({ text: `/eternals name:${eternal.id} for the rest of the set` }) : embed;
+  return eternal ? embed.setFooter({ text: `/eternals name:${eternal.slug} for the rest of the set` }) : embed;
 }
 
 /** A detail embed per match, or undefined when they won't fit in one message and a list should be shown instead. */
@@ -116,13 +56,16 @@ export function itemDetailEmbeds(matches: OwnedItem[]) {
   return embeds;
 }
 
-/** Titled by the eternal and slot options that narrowed it down, e.g. "Echo · Weapons". */
-export function itemListEmbed(matches: OwnedItem[], owner: string | null, slot: string | null) {
-  const ownerName = owner === 'echo' ? 'Echo' : eternals.find((e) => e.id === owner)?.name;
-  const label = [ownerName, slot ? `${slot[0]?.toUpperCase()}${slot.slice(1)}s` : null].filter(Boolean).join(' · ');
-  const options = matches.map(({ item, eternal }) => `\`${item.slot}\` ${item.name}${eternal ? ` — *${eternal.name}*` : ''}`).join('\n');
+/** Titled by the eternal and slot options that narrowed it down, e.g. "Echo · Weapons", and linked to the same list on TowerHub. */
+export function itemListEmbed(matches: OwnedItem[], owner: ItemOwner | undefined, slot: string | null) {
+  const slotName = slot ? capitalize(slot) : undefined;
+  const label = [owner?.name, slotName && `${slotName}s`].filter(Boolean).join(' · ');
+  const options = matches.map(({ item, eternal }) => `\`${item.slot}\` ${itemLink(item)}${eternal ? ` — *${eternal.name}*` : ''}`).join('\n');
 
-  return baseEmbed(label || 'Matching items', `${matches.length} items:\n\n${options}`).setFooter({
+  // TowerHub has no filter for Echo, so an Echo list opens on everything in the slot.
+  const eternal = owner === ECHO ? undefined : owner?.slug;
+
+  return baseEmbed(label || 'Matching items', `${matches.length} items:\n\n${options}`).setURL(itemsUrl({ eternal, slot: slotName })).setFooter({
     text: 'Narrow it with the eternal and slot options.',
   });
 }
@@ -135,5 +78,5 @@ export function itemsOverviewEmbed(count: number) {
       '`/item name:` — search by item or ability, with autocomplete\n\n' +
       'The options combine, and any one of them works on its own. ' +
       'Anchors and consumables are under `slot:`.',
-  );
+  ).setURL(itemsUrl());
 }

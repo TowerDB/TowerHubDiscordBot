@@ -1,23 +1,29 @@
 import { SlashCommandBuilder } from 'discord.js';
 
-import { eternals, filterItems, items, type OwnedItem } from '../data.js';
 import { ephemeral, ephemeralError } from '../embeds/general.js';
 import { itemDetailEmbeds, itemListEmbed, itemsOverviewEmbed } from '../embeds/items.js';
+import { ECHO, filterItems, gameData, type ItemOwner, type OwnedItem } from '../gameData.js';
 import { shareable } from '../share.js';
-import { findBest, keysOf, MAX_QUERY_LENGTH, respondWithMatches } from '../utils/search.js';
+import { findBest, MAX_QUERY_LENGTH, respondWithMatches } from '../utils/search.js';
 import type { Command } from '../types.js';
 
-/** Searchable by item name, its aliases, the abilities it grants, and its owner. */
-export const keys = ({ item, eternal }: OwnedItem) =>
-  keysOf(
-    item,
-    item.name,
-    item.id,
-    ...(eternal ? [eternal.name] : ['echo']),
-    ...item.abilities.map((ability) => ability.name),
-  );
+/** Searchable by item name, the abilities it grants, and its owner. */
+export const keys = ({ item, eternal }: OwnedItem) => [
+  item.name,
+  item.slug,
+  ...(eternal ? [eternal.name, `${eternal.name}'s ${item.name}`] : ['echo']),
+  ...item.abilities.map((ability) => ability.name),
+];
 
 const SLOTS = ['Crown', 'Amulet', 'Weapon', 'Anchor', 'Consumable'] as const;
+
+const owners = (): ItemOwner[] => [ECHO, ...gameData().eternals];
+const ownerKeys = (owner: ItemOwner) => [owner.name, owner.slug];
+
+/** Autocomplete only suggests, so the option can hold whatever was typed. */
+function findOwner(query: string): ItemOwner | undefined {
+  return findBest(query, owners(), ownerKeys)[0];
+}
 
 export const itemCommand: Command = {
   data: new SlashCommandBuilder().setName('item')
@@ -25,10 +31,8 @@ export const itemCommand: Command = {
     .addStringOption((option) =>
       option.setName('eternal')
         .setDescription('Whose item, or Echo for the ones tied to no eternal')
-        .addChoices(
-          { name: 'Echo', value: 'echo' },
-          ...eternals.map((eternal) => ({ name: eternal.name, value: eternal.id })),
-        ),
+        .setAutocomplete(true)
+        .setMaxLength(MAX_QUERY_LENGTH),
     ).addStringOption((option) =>
       option.setName('slot')
         .setDescription('Which slot')
@@ -40,16 +44,31 @@ export const itemCommand: Command = {
   examples: ['/item eternal:dahla slot:crown', '/item eternal:rynshi slot:weapon', '/item name:ringblade'],
 
   async autocomplete(interaction) {
-    const roster = filterItems(interaction.options.getString('eternal'), interaction.options.getString('slot'));
+    if (interaction.options.getFocused(true).name === 'eternal') {
+      await respondWithMatches(interaction, owners(), ownerKeys, (owner) => ({ name: owner.name, value: owner.slug }));
+
+      return;
+    }
+
+    const typedOwner = interaction.options.getString('eternal');
+    const owner = typedOwner ? findOwner(typedOwner) : undefined;
+    const roster = filterItems(owner?.slug ?? null, interaction.options.getString('slot'));
     await respondWithMatches(interaction, roster, keys, ({ item }) => ({ name: item.name, value: item.name }));
   },
 
   async execute(interaction) {
     const name = interaction.options.getString('name');
-    const owner = interaction.options.getString('eternal');
+    const typedOwner = interaction.options.getString('eternal');
     const slot = interaction.options.getString('slot');
 
-    let matches = filterItems(owner, slot);
+    const owner = typedOwner ? findOwner(typedOwner) : undefined;
+    if (typedOwner && !owner) {
+      await interaction.reply(ephemeralError('No such eternal', `No eternal matched \`${typedOwner}\`. Run /eternals to see the full list.`));
+
+      return;
+    }
+
+    let matches = filterItems(owner?.slug ?? null, slot);
     if (name) {
       const found = findBest(name, matches, keys);
       if (!found.length) {
@@ -61,7 +80,7 @@ export const itemCommand: Command = {
     }
 
     if (!name && !owner && !slot) {
-      await interaction.reply(ephemeral(itemsOverviewEmbed(items.length)));
+      await interaction.reply(ephemeral(itemsOverviewEmbed(gameData().items.length)));
 
       return;
     }

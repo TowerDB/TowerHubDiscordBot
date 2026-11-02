@@ -25,22 +25,6 @@
     ]
   },
   {
-    "topic": "Beta",
-    "entries": [
-      {
-        "question": "When is the next playtest?",
-        "answer": "The latest playtest schedules are posted in <#1418030637398495282>"
-      },
-      {
-        "question": "How do I sign up?",
-        "answer": "You can get a key here!\nhttps://bonfire.firstlook.gg/invite/playtest"
-      }
-    ],
-    "aliases": [
-      "playtest"
-    ]
-  },
-  {
     "topic": "Bugs",
     "entries": [
       {
@@ -95,34 +79,12 @@
     ]
   },
   {
-    "topic": "Feedback",
-    "entries": [
-      {
-        "question": "How do I provide feedback?",
-        "answer": "If you have feedback, post on the Arkheron Forums: https://forums.arkheron.com/"
-      }
-    ]
-  },
-  {
     "topic": "Genre",
     "entries": [
       {
         "question": "What genre is Arkheron?",
         "answer": "Arkheron is a team-based PvP game where combat creativity powers your ascension. It pulls from multiple genres to make something a little fresh and a little strange."
       }
-    ]
-  },
-  {
-    "topic": "Release Date",
-    "entries": [
-      {
-        "question": "When is the release date?",
-        "answer": "November 27th!!!"
-      }
-    ],
-    "aliases": [
-      "early access",
-      "launch"
     ]
   },
   {

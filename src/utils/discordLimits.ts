@@ -4,7 +4,6 @@ import type { EmbedBuilder } from 'discord.js';
 export const MAX_EMBED_DESCRIPTION = 4096;
 export const MAX_FIELD_NAME = 256;
 export const MAX_FIELD_VALUE = 1024;
-export const MAX_FIELDS = 25;
 export const MAX_MESSAGE_CHARS = 6000;
 
 /** An autocomplete reply offers at most 25 choices, each named in at most 100 characters. */

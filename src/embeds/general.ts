@@ -1,17 +1,18 @@
 import { EmbedBuilder, MessageFlags } from 'discord.js';
 import { MAX_EMBED_DESCRIPTION } from '../utils/discordLimits.js';
-import { truncate } from '../utils/general.js';
+import { capitalize, truncate } from '../utils/general.js';
+import { escapeText } from '../utils/markdown.js';
 
 export function baseEmbed(title: string, description?: string): EmbedBuilder {
   const embed = new EmbedBuilder().setColor(0xe25822).setTitle(title);
-  if (description !== undefined) {
+  if (description) {
     embed.setDescription(truncate(description, MAX_EMBED_DESCRIPTION));
   }
 
   return embed;
 }
 
-export function errorEmbed(title: string, description: string): EmbedBuilder {
+function errorEmbed(title: string, description: string): EmbedBuilder {
   return new EmbedBuilder().setColor(0x992d22).setTitle(title).setDescription(truncate(description, MAX_EMBED_DESCRIPTION));
 }
 
@@ -27,6 +28,18 @@ export function ephemeral(...embeds: EmbedBuilder[]): { embeds: EmbedBuilder[]; 
 
 export function ephemeralError(title: string, description: string): { embeds: EmbedBuilder[]; flags: MessageFlags.Ephemeral } {
   return ephemeral(errorEmbed(title, description));
+}
+
+/** The first page of a list, titled by what narrowed it down. The title opens the same list on TowerHub, where the rest are. */
+export function resultsEmbed(labels: Array<string | null | undefined>, entries: string[], total: number, url: string): EmbedBuilder {
+  const count = total > entries.length ? `${total} found, showing ${entries.length}.` : `${total} found.`;
+
+  return baseEmbed(labels.filter(Boolean).join(' · '), `${count}\n\n${entries.join('\n\n')}`).setURL(url);
+}
+
+/** The labels every list shares, for after the ones only it has. */
+export function commonLabels(author: string | null | undefined, sort: string | null | undefined): Array<string | undefined> {
+  return [author ? `by ${escapeText(author)}` : undefined, sort ? capitalize(sort) : undefined];
 }
 
 /** Several entries matched a typed lookup equally well, so they're listed to pick from. */

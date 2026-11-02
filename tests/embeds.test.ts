@@ -6,18 +6,21 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { itemCommand } from '../src/commands/item.js';
 import { commands } from '../src/commands/registry.js';
-import { eternals, faq, glossary, items, socials } from '../src/data.js';
+import { faq, socials } from '../src/data.js';
+import { buildEmbed, buildListEmbed } from '../src/embeds/builds.js';
 import { eternalDetailEmbed, eternalListEmbed } from '../src/embeds/eternals.js';
 import { faqListEmbed, faqTopicEmbed } from '../src/embeds/faq.js';
 import { glossaryListEmbed, glossaryTermEmbed } from '../src/embeds/glossary.js';
+import { guideEmbed, guideListEmbed } from '../src/embeds/guides.js';
 import { helpDetailEmbed, helpOverviewEmbed } from '../src/embeds/help.js';
 import { itemDetailEmbeds } from '../src/embeds/items.js';
-import { lobbyEmbed, lobbyListEmbed } from '../src/embeds/lobbies.js';
 import { socialsEmbed } from '../src/embeds/socials.js';
-import { MAX_DESCRIPTION_LENGTH, MAX_LOBBIES, MAX_PLAYERS } from '../src/lobbies.js';
-import type { Lobby } from '../src/lobbies.js';
+import { gameData, type OwnedItem } from '../src/gameData.js';
+import type { Ability, Eternal, Item } from '../src/types.js';
 import { embedLength, MAX_EMBED_DESCRIPTION, MAX_FIELD_NAME, MAX_FIELD_VALUE, MAX_MESSAGE_CHARS } from '../src/utils/discordLimits.js';
-import { choicesOf } from './helpers.js';
+import { build, buildSummary, choicesOf, guide } from './helpers.js';
+
+const { eternals, glossary, items } = gameData();
 
 /** truncate() cuts text to exactly its limit and ends it with "…", so text like that lost its end. */
 function cutShort(text: string | undefined, limit: number): boolean {
@@ -64,7 +67,7 @@ describe('detail embeds', () => {
     expect(problems(faqTopicEmbed(topic))).toEqual([]);
   });
 
-  it.each(glossary.map((entry) => [entry.term, entry] as const))('/glossary term:%s', (_, entry) => {
+  it.each(glossary.map((entry) => [entry.name, entry] as const))('/glossary term:%s', (_, entry) => {
     expect(problems(glossaryTermEmbed(entry))).toEqual([]);
   });
 
@@ -105,7 +108,7 @@ async function itemReply(options: Record<string, string | null>): Promise<EmbedB
 }
 
 describe('/item browsing', () => {
-  const owners = [null, ...choicesOf(itemCommand, 'eternal')];
+  const owners = [null, 'echo', ...eternals.map((eternal) => eternal.slug)];
   const slots = [null, ...choicesOf(itemCommand, 'slot')];
 
   it.each(owners.flatMap((owner) => slots.map((slot) => [owner, slot] as const)))('eternal:%s slot:%s', async (eternal, slot) => {
@@ -113,51 +116,336 @@ describe('/item browsing', () => {
 
     expect(embeds.length).toBeGreaterThan(0);
     expect(problems(...embeds)).toEqual([]);
+    expect(embeds.filter(({ data }) => !data.url && data.title !== 'No such item')).toEqual([]);
   });
 });
 
-/** Snowflakes run to 19 digits, and the lobby embeds mention players and link posts by them. */
-const snowflake = (n: number) => String(n).padStart(19, '9');
+describe('links to TowerHub', () => {
+  const site = 'https://towerhub.io';
 
-function busyLobby(code: string): Lobby {
-  return {
-    id: code,
-    code,
-    region: 'South America',
-    mode: 'Ascension',
-    description: 'x'.repeat(MAX_DESCRIPTION_LENGTH),
-    players: Array.from({ length: MAX_PLAYERS }, (_, n) => ({ id: snowflake(n), name: `Player ${n}` })),
-    ownerId: snowflake(0),
-    createdAt: Date.now(),
-    lastActivityAt: Date.now(),
-    guildId: snowflake(1),
-    channelId: snowflake(2),
-    messageId: snowflake(3),
-  };
+  it.each(eternals.map((eternal) => [eternal.slug, eternal] as const))('/eternals name:%s opens its page', (slug, eternal) => {
+    expect(eternalDetailEmbed(eternal).data.url).toBe(`${site}/eternals/${slug}`);
+  });
+
+  it.each(items.map((owned) => [owned.item.slug, owned] as const))('/item for %s opens its page', (slug, owned) => {
+    expect(itemEmbed(owned).url).toBe(`${site}/items/${slug}`);
+  });
+
+  it('/eternals opens the eternals page, with each name opening its own', () => {
+    const { url, description } = eternalListEmbed(eternals).data;
+
+    expect(url).toBe(`${site}/eternals`);
+    expect(description).toContain(`[Dahla](${site}/eternals/dahla)`);
+  });
+
+  it('/item with no options opens the items page', async () => {
+    const [embed] = await itemReply({});
+
+    expect(embed?.data.url).toBe(`${site}/items`);
+  });
+
+  // TowerHub's page reads these: an eternal's slug, and the slot in its own casing.
+  it.each([
+    ['eternal:dahla', { eternal: 'dahla' }, '/items?eternal=dahla'],
+    ['slot:weapon', { slot: 'weapon' }, '/items?slot=Weapon'],
+    ['eternal:echo, which TowerHub has no filter for', { eternal: 'echo' }, '/items'],
+    ['eternal:echo slot:weapon', { eternal: 'echo', slot: 'weapon' }, '/items?slot=Weapon'],
+  ])('a list from %s opens the same list', async (_, options, path) => {
+    const [embed] = await itemReply(options);
+
+    expect(embed?.data.url).toBe(`${site}${path}`);
+  });
+
+  it('a list links each item, and leaves the eternal to its own embed', async () => {
+    const [embed] = await itemReply({ eternal: 'dahla' });
+
+    expect(embed?.data.description).toContain(`[Vanish Crown](${site}/items/vanish-crown) — *Dahla*`);
+  });
+
+  it('an eternal links each of its items', () => {
+    const dahla = eternals.find((eternal) => eternal.slug === 'dahla') as Eternal;
+    const field = eternalDetailEmbed(dahla).data.fields?.find(({ name }) => name === 'Items');
+
+    expect(field?.value).toContain(`**[Vanish Crown](${site}/items/vanish-crown)**`);
+  });
+
+  it('an item links its eternal', () => {
+    const vanish = items.find(({ item }) => item.slug === 'vanish-crown') as OwnedItem;
+
+    expect(itemEmbed(vanish).description).toContain(`**[Dahla](${site}/eternals/dahla)**, The Dancer`);
+  });
+});
+
+function ability(overrides: Partial<Ability>): Ability {
+  return { name: 'Strike', description: 'Hits something.', mechanics: [], levels: [], ...overrides };
 }
 
-describe('lobby embeds', () => {
-  it(`fit a lobby of ${MAX_PLAYERS}`, () => {
-    expect(problems(lobbyEmbed(busyLobby('DX89EE')))).toEqual([]);
+function item(overrides: Partial<Item>): Item {
+  const base: Item = { slug: 'test', name: 'Test', slot: 'Crown', eternalSlug: null, description: null, lore: null, maxStackCount: 1, abilities: [] };
+
+  return { ...base, ...overrides };
+}
+
+function itemEmbed(owned: OwnedItem) {
+  const [embed] = itemDetailEmbeds([owned]) ?? [];
+  if (!embed) {
+    throw new Error('Expected a detail embed.');
+  }
+
+  return embed.data;
+}
+
+describe('item details', () => {
+  const stat = (name: string, value: number) => ({ name, unit: 'Seconds' as const, value });
+  const level = (number: number, stats: ReturnType<typeof stat>[], upgradeEffect: string | null = null, damageText: string | null = null) => ({
+    level: number,
+    damageText,
+    upgradeEffect,
+    stats,
   });
 
-  it(`fit /lobbies with ${MAX_LOBBIES} lobbies open`, () => {
-    const open = Array.from({ length: MAX_LOBBIES }, (_, n) => busyLobby(`CODE${String(n).padStart(2, '0')}`));
+  const valueOf = (abilityUnderTest: Ability) => itemEmbed({ item: item({ abilities: [abilityUnderTest] }) }).fields?.[0]?.value;
 
-    expect(problems(lobbyListEmbed(open, null, null))).toEqual([]);
+  it('shows the first level in full, damage first, then only what each level changes', () => {
+    const value = valueOf(ability({
+      levels: [
+        level(1, [stat('Cooldown', 14), stat('Stun Duration', 0.5)], null, '25'),
+        level(2, [stat('Cooldown', 12), stat('Stun Duration', 0.5)], null, '25'),
+        level(3, [stat('Cooldown', 12), stat('Stun Duration', 0.5)], null, '25'),
+      ],
+    }));
+
+    expect(value).toBe('Hits something.\n**Damage**: 25\n**Cooldown**: 14s\n**Stun Duration**: 0.5s\n`II` **Cooldown**: 12s');
   });
 
-  it('show the description on the post but not in /lobbies', () => {
-    const lobby = { ...busyLobby('DX89EE'), description: 'Casual, all welcome' };
+  it('shows upgrade text that says something the numbers do not', () => {
+    const value = valueOf(ability({
+      levels: [
+        level(1, [stat('Duration', 5)]),
+        level(2, [stat('Duration', 5)]),
+        level(3, [stat('Duration', 5)], 'You are invulnerable for 1 second'),
+      ],
+    }));
 
-    expect(lobbyEmbed(lobby).data.description).toContain(lobby.description);
-    expect(JSON.stringify(lobbyListEmbed([lobby], null, null).toJSON())).not.toContain(lobby.description);
+    expect(value).toContain('`III` You are invulnerable for 1 second');
   });
 
-  // The post is the bot's, so a player's description mustn't dress up a link as something else on it.
-  it('show the description as typed, with no formatting or disguised links', () => {
-    const lobby = { ...busyLobby('DX89EE'), description: '**Free** [nitro](https://example.com)' };
+  it('keeps the number when the upgrade text leaves it out', () => {
+    const value = valueOf(ability({
+      levels: [level(1, [stat('Radius', 5)]), level(2, [stat('Radius', 6)], 'Radius increased')],
+    }));
 
-    expect(lobbyEmbed(lobby).data.description).toContain('\\*\\*Free\\*\\* \\[nitro](https://example.com)');
+    expect(value).toContain('`II` **Radius**: 6s — Radius increased');
+  });
+
+  it('drops upgrade text that only restates the change', () => {
+    const value = valueOf(ability({
+      levels: [level(1, [stat('Blind Duration', 5)]), level(2, [stat('Blind Duration', 6)], 'Blind duration increased to 6 seconds')],
+    }));
+
+    expect(value).toContain('`II` **Blind Duration**: 6s');
+    expect(value).not.toContain('increased');
+  });
+
+  it('lists a change in damage, which is free text', () => {
+    const value = valueOf(ability({
+      levels: [level(1, [], null, '14'), level(2, [], null, '14'), level(3, [], null, '9 / 9')],
+    }));
+
+    expect(value).toContain('`III` **Damage**: 9 / 9');
+  });
+
+  it('marks a mechanic that arrives with an upgrade', () => {
+    const mechanics = [
+      { name: 'Stun', definition: '', unlockedAtLevel: 1 },
+      { name: 'Invulnerable', definition: '', unlockedAtLevel: 3 },
+    ];
+
+    expect(valueOf(ability({ mechanics }))).toContain('`Stun` `Invulnerable III`');
+  });
+
+  it('labels a weapon\'s abilities by their order, and nothing else\'s', () => {
+    const abilities = [ability({ name: 'Swing' }), ability({ name: 'Lunge' })];
+
+    expect(itemEmbed({ item: item({ slot: 'Weapon', abilities }) }).fields?.map((field) => field.name)).toEqual(['Primary · Swing', 'Secondary · Lunge']);
+    expect(itemEmbed({ item: item({ abilities: abilities.slice(0, 1) }) }).fields?.map((field) => field.name)).toEqual(['Swing']);
+  });
+
+  it('shows how far an item stacks, its lore, and a description only once', () => {
+    const { description, fields } = itemEmbed({
+      item: item({
+        slot: 'Consumable',
+        maxStackCount: 4,
+        description: 'Regain 125 Health',
+        lore: 'It tastes awful.',
+        abilities: [ability({ description: 'Regain 125 Health' })],
+      }),
+    });
+
+    expect(description).toBe('Consumable · Stacks to 4\n\n*It tastes awful.*');
+    expect(fields?.[0]?.value).toBe('Regain 125 Health');
+  });
+
+});
+
+describe('guides', () => {
+  it('shows who wrote it and what it is, opening the guide', () => {
+    const { title, url, description, timestamp } = guideEmbed(guide({ updatedAt: '2026-10-20T12:00:00Z' })).data;
+
+    expect(title).toBe('Dahla Basics');
+    expect(url).toBe('https://towerhub.io/guides/dahla-basics');
+    expect(description).toBe('Community · by Ravah · 5 min read\n\nHow to play her early rounds.');
+    expect(timestamp).toBe('2026-10-20T12:00:00.000Z');
+  });
+
+  it('uses an eternal as its thumbnail, and nothing for art this repo has no copy of', () => {
+    expect(guideEmbed(guide({ thumbnail: 'eternal/dahla' })).data.thumbnail?.url).toMatch(/images\/eternals\/dahla\.png$/);
+    expect(guideEmbed(guide({ thumbnail: 'map/floor-1' })).data.thumbnail).toBeUndefined();
+    expect(guideEmbed(guide({ thumbnail: null })).data.thumbnail).toBeUndefined();
+  });
+
+  it('still renders with no summary', () => {
+    expect(guideEmbed(guide({ summary: '' })).data.description).toBe('Community · by Ravah · 5 min read');
+  });
+
+  it('lists each with a link', () => {
+    const { description } = guideListEmbed({ items: [guide()], total: 1 }, {}).data;
+
+    expect(description).toContain('**[Dahla Basics](https://towerhub.io/guides/dahla-basics)**\nCommunity · by Ravah · 5 min read');
+  });
+});
+
+describe('builds', () => {
+  it('shows who made it, its patch and its loadout, opening the build', () => {
+    const { title, url, description, fields } = buildEmbed(build()).data;
+
+    expect(title).toBe('Bleed Dahla');
+    expect(url).toBe('https://towerhub.io/builds/bleed-dahla');
+    expect(description).toBe('by Ravah · Patch 0.23.0\n\nStack bleed, then leave.');
+    expect(fields?.[0]?.value.split('\n')).toHaveLength(6);
+    expect(fields?.[0]?.value).toContain('`Crown`: [Vanish Crown](https://towerhub.io/items/vanish-crown)');
+  });
+
+  it('says what has moved since its patch', () => {
+    const { description } = buildEmbed(build({
+      changes: [{ name: 'Vanish Crown' }, { name: 'Dancing Blade' }],
+      unavailableItems: ['Some Potion'],
+      outOfRotationItems: ['Throwing Knives'],
+    })).data;
+
+    expect(description).toContain('**Changed since 0.23.0:** Vanish Crown, Dancing Blade');
+    expect(description).toContain('**No longer in the game:** Some Potion');
+    expect(description).toContain('**Out of rotation:** Throwing Knives');
+  });
+
+  it('says nothing of that when it is up to date', () => {
+    expect(buildEmbed(build()).data.description).not.toContain('Changed since');
+  });
+
+  it('shows its set bonuses, with the eternal as its thumbnail, or its crown without one', () => {
+    const setBonuses = [{ eternalSlug: 'dahla', name: 'Dance', description: 'Move faster.' }];
+    const { fields, thumbnail } = buildEmbed(build({ setBonuses })).data;
+
+    expect(fields?.[1]).toEqual({ name: 'Set Bonus: Dance', value: 'Move faster.' });
+    expect(thumbnail?.url).toMatch(/images\/eternals\/dahla\.png$/);
+    expect(buildEmbed(build()).data.thumbnail?.url).toMatch(/images\/items\/vanish-crown\.png$/);
+  });
+
+  it('still renders with nothing left of its summary', () => {
+    expect(buildEmbed(build({ summary: '![](https://example.com/a.png)' })).data.description).toBe('by Ravah · Patch 0.23.0');
+  });
+
+  it('lists each with its gear, leaving out the anchor and consumable', () => {
+    const { description } = buildListEmbed({ items: [buildSummary()], total: 1 }, {}, []).data;
+
+    expect(description).toContain('**[Bleed Dahla](https://towerhub.io/builds/bleed-dahla)** — by Ravah\nVanish Crown · Petal Dance Amulet · Dancing Blade · Throwing Knives');
+    expect(description).not.toContain('Some Anchor');
+  });
+});
+
+// Anyone with a username writes these, so unlike the game's own text they can be aimed at the embed.
+describe('text written by users', () => {
+  const nitro = '[Free Nitro](https://evil.example)';
+
+  it.each([
+    ['a guide\'s title in a list', guideListEmbed({ items: [guide({ title: nitro })], total: 1 }, {})],
+    ['a build\'s name in a list', buildListEmbed({ items: [buildSummary({ name: nitro })], total: 1 }, {}, [])],
+    ['an author in a list', guideListEmbed({ items: [guide({ author: nitro })], total: 1 }, {})],
+    ['a guide\'s summary', guideEmbed(guide({ summary: nitro }))],
+    ['a build\'s summary', buildEmbed(build({ summary: `\`${nitro}\`` }))],
+  ])('%s can\'t carry a link of its own', (_, embed) => {
+    expect(embed.data.description).not.toMatch(/(?<!\\)\[Free Nitro\]\(https:/);
+  });
+
+  it('a title with brackets keeps its own link working', () => {
+    const { description } = guideListEmbed({ items: [guide({ title: '[S Tier] Bleed' })], total: 1 }, {}).data;
+
+    expect(description).toContain('[(S Tier) Bleed](https://towerhub.io/guides/dahla-basics)');
+  });
+
+  it('formatting in a title shows as typed', () => {
+    expect(guideEmbed(guide({ title: '**Best** guide' })).data.title).toBe('\\*\\*Best\\*\\* guide');
+  });
+
+  it('a name in the list\'s title is escaped too', () => {
+    const { title } = guideListEmbed({ items: [guide()], total: 1 }, { author: 'dark_knight_' }).data;
+
+    expect(title).toBe('Guides · by dark\\_knight\\_');
+  });
+
+  // Escaping doubles text like this, which is the most a page can hold.
+  it('a full page of the longest text escaping can make stays within Discord\'s limits', () => {
+    const stars = (count: number) => '*'.repeat(count);
+    const guides = Array.from({ length: 10 }, () => guide({ title: stars(60), summary: stars(300), author: stars(20) }));
+    const builds = Array.from({ length: 10 }, () => buildSummary({ name: stars(60), author: stars(20) }));
+
+    for (const embed of [guideListEmbed({ items: guides, total: 10 }, {}), buildListEmbed({ items: builds, total: 10 }, {}, [])]) {
+      expect(embedLength(embed)).toBeLessThanOrEqual(MAX_MESSAGE_CHARS);
+    }
+  });
+
+  it('the longest build stays within Discord\'s limits', () => {
+    const embed = buildEmbed(build({
+      name: '*'.repeat(60),
+      summary: '*'.repeat(3000),
+      author: '*'.repeat(20),
+      setBonuses: [
+        { eternalSlug: 'dahla', name: 'Dance', description: 'x'.repeat(1000) },
+        { eternalSlug: 'rynshi', name: 'Rage', description: 'x'.repeat(1000) },
+      ],
+    }));
+
+    expect(problems(embed)).toEqual([]);
+  });
+});
+
+// TowerHub imports these as soon as a new build ships, before anyone has written their text. Discord refuses blank embed text.
+describe('a new eternal with its text still to come', () => {
+  const eternal: Eternal = {
+    slug: 'newcomer',
+    name: 'Newcomer',
+    title: '',
+    description: '',
+    setBonusName: 'Unnamed',
+    setBonusDescription: '',
+    isActive: false,
+    ability: null,
+  };
+
+  it('still renders', () => {
+    const { title, description, fields } = eternalDetailEmbed(eternal).data;
+
+    expect(title).toBe('Newcomer');
+    expect(description).toBeUndefined();
+    expect(fields?.[0]).toEqual({ name: 'Set Bonus: Unnamed', value: '—' });
+  });
+
+  it('still renders as the owner of an item', () => {
+    expect(itemEmbed({ item: item({ eternalSlug: 'newcomer' }), eternal }).description)
+      .toBe('Crown · **[Newcomer](https://towerhub.io/eternals/newcomer)**');
+  });
+
+  it('still renders an ability with nothing to say', () => {
+    expect(itemEmbed({ item: item({ abilities: [ability({ description: '' })] }) }).fields?.[0]?.value).toBe('—');
   });
 });

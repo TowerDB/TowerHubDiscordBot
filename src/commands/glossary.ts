@@ -1,12 +1,12 @@
 import { SlashCommandBuilder } from 'discord.js';
 
-import { glossary } from '../data.js';
 import { ephemeral } from '../embeds/general.js';
 import { glossaryListEmbed, glossaryTermEmbed } from '../embeds/glossary.js';
-import { keysOf, MAX_QUERY_LENGTH, replyWithBest, respondWithMatches } from '../utils/search.js';
+import { gameData } from '../gameData.js';
+import { MAX_QUERY_LENGTH, replyWithBest, respondWithMatches } from '../utils/search.js';
 import type { Command, GlossaryEntry } from '../types.js';
 
-export const keys = (entry: GlossaryEntry) => keysOf(entry, entry.term);
+export const keys = (entry: GlossaryEntry) => [entry.name];
 
 export const glossaryCommand: Command = {
   data: new SlashCommandBuilder().setName('glossary').setDescription('Defines a game term.')
@@ -17,10 +17,11 @@ export const glossaryCommand: Command = {
   examples: ['/glossary term:fortitude', '/glossary term:crushing', '/glossary'],
 
   async autocomplete(interaction) {
-    await respondWithMatches(interaction, glossary, keys, (entry) => ({ name: entry.term, value: entry.term }));
+    await respondWithMatches(interaction, gameData().glossary, keys, (entry) => ({ name: entry.name, value: entry.name }));
   },
 
   async execute(interaction) {
+    const { glossary } = gameData();
     const query = interaction.options.getString('term');
 
     if (!query) {
@@ -31,9 +32,8 @@ export const glossaryCommand: Command = {
 
     await replyWithBest(interaction, query, glossary, keys, {
       plural: 'terms',
-      label: (entry) => entry.term,
+      label: (entry) => entry.name,
       render: glossaryTermEmbed,
-      shareable: true,
       notFound: { title: 'Term not found', description: `No entry for \`${query}\`. Run /glossary to see all ${glossary.length} terms.` },
     });
   },

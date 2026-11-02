@@ -1,12 +1,12 @@
-# JonJ Bonfire Bot
+# TowerHub Bot
 
-A Discord bot with slash commands for an FAQ, social links, eternal and item lookups, random
-builds, a glossary, and player-run lobbies.
+A Discord bot with slash commands for an FAQ, social links, eternal and item lookups, TowerHub's
+guides and builds, random builds and a glossary.
 
-Content is populated from the [Arkheron Wiki](https://arkheron.wiki.gg/): 12 eternals, 72 items
-(48 eternal-specific plus Echo crowns, amulets and weapons, anchors and consumables), and 79
-glossary terms, with wiki icons and portraits on the embeds. The only remaining placeholders are
-the server and channel IDs and bot token in `.env`. See [Editing the content](#editing-the-content).
+Eternals, items and glossary terms come from the [TowerHub](https://towerhub.io) API and stay up to
+date with the game, cached in memory for 30 minutes. Guides and builds are searched on TowerHub
+each time. The FAQ, social links and the icons and portraits on the embeds live in this repo. The
+only remaining placeholders are the server ID and bot token in `.env`. See [Content](#content).
 
 The commands cross-reference each other: `/eternals` names an eternal's four items, `/item`
 gives one item's abilities and tier upgrades, and the ability tags on both are glossary terms,
@@ -22,33 +22,33 @@ so `/glossary term:crushing` explains them.
 | `/eternals [name]` | Lists every eternal. With an argument, shows their ability, set bonus, and items. |
 | `/item [eternal] [slot] [name]` | Shows an item and the abilities it grants. `eternal:` includes an **Echo** choice for items tied to no eternal; `slot:` covers crowns, amulets, weapons, anchors and consumables. The options combine and each works alone. |
 | `/randombuild` | Rolls a random build from the Echo items and the items of eternals currently in rotation: one crown, one amulet and two different weapons. Only you see the result. |
-| `/glossary [term]` | Defines a term. With no argument, lists all 79. |
-| `/createlobby <code> <region> [mode] [description]` | Posts a lobby for an in-game invite code, with you as host. See [Lobbies](#lobbies). |
-| `/lobbies [region] [mode]` | Lists open lobbies, most recently active first, with their region and mode (each left out when the list is filtered to one) and links to their posts. `region:` and `mode:` filter the list and combine; lobbies with no mode don't match a `mode:` filter. |
-| `/lobbyadd <player>` | Host only. Adds a server member to the lobby you're hosting, unless they're already in a lobby. |
-| `/lobbykick <player>` | Host only. Removes a player from the lobby you're hosting; `player:` autocompletes against your own roster. |
+| `/glossary [term]` | Defines a term. With no argument, lists them all. |
+| `/guide [name] [category] [author] [sort]` | Finds guides on TowerHub. One match shows its summary and links to the guide; several list the first 10 and link to the rest. With no options, lists the latest. |
+| `/build [name] [eternal] [item] [author] [sort]` | Finds builds on TowerHub, the same way. One match shows its loadout, set bonuses and what has changed since its patch. `eternal:` finds builds using any of that eternal's items. |
 
-The four lobby commands exist only in the lobby server; every other server, and DMs with the bot,
-get the rest, and `/help` there leaves the lobby commands out. See [Lobbies](#lobbies).
-
-`/help` replies so only you see it. `/faq`, `/socials`, `/eternals`, `/item` and
+`/help` replies so only you see it. `/faq`, `/socials`, `/eternals`, `/item`, `/guide`, `/build` and
 `/glossary term:` do too, with a **Post to channel** button that posts the same embeds publicly,
 marked with who shared them. The post is a plain message rather than a reply, since a reply would
 point at the private one and read as deleted once it's dismissed, so the bot needs to be able to
 send messages and embed links in that channel. So does whoever clicks it: the bot only posts what
 they could have posted themselves. The button comes off the private reply once the post goes through.
 
-`/eternals name:`, `/item eternal:` / `slot:` and the lobby `region:` / `mode:` options are
-pick-lists. `/item name:`, `/glossary term:`, `/faq topic:` and `/help command:` use
-**autocomplete**, since 72 items and 79 terms are well past Discord's 25-choice cap; matches are
-ranked exact, then prefix, then word-start, then anywhere. `/item name:` only suggests items that
-fit the `eternal:` and `slot:` already picked, so `eternal:Dahla` narrows it to her four.
+`/item slot:`, `/guide category:` and the `sort:` options are pick-lists. Every other option that
+looks something up uses **autocomplete**: the items and terms are well past Discord's 25-choice
+cap, and the eternals, guides and builds can change while the bot runs. Matches are ranked exact, then prefix, then word-start, then anywhere. `/item name:` only suggests items that
+fit the `eternal:` and `slot:` already picked, so `eternal:Dahla` narrows it to her four, and
+`/guide name:` and `/build name:` only suggest what the options already picked would find.
 
-Typed values are still matched leniently — case-insensitive, tolerant of partial names,
-aliases and small typos, so `stealh` finds Stealthed, `hp` finds Essence and `reaver` finds
-Tormentors. When several entries match equally well the bot lists them rather than guessing
+Typed values are still matched leniently — case-insensitive, tolerant of partial names and
+small typos, so `stealthd` finds Stealthed and `essense` finds Essence. `/faq` also takes each
+topic's aliases. When several entries match equally well the bot lists them rather than guessing
 (`/glossary term:damage` → the four Damage terms); when nothing matches it says so and points
 at the command that lists everything.
+
+`/guide` and `/build` are the exception: TowerHub does the searching, so `name:` needs letters that
+are in the title as written, and `author:` needs the whole username, ignoring case. Their
+suggestions cover that, and picking one of a `name:` opens that result. `/build eternal:` and
+`item:` are lenient like the rest.
 
 ## Setup
 
@@ -64,8 +64,7 @@ at the command that lists everything.
    ```sh
    cp .env.example .env
    ```
-   Fill in `DISCORD_TOKEN`, `LOBBY_GUILD_ID` and `LOBBY_CHANNEL_ID`, plus `GUILD_ID` for local
-   testing (enable *Settings → Advanced → Developer Mode* in Discord, then right-click → *Copy ID*).
+   Fill in `DISCORD_TOKEN`, plus `GUILD_ID` for local testing (enable *Settings → Advanced → Developer Mode* in Discord, then right-click → *Copy ID*).
    The [rate limits](#rate-limiting) have working defaults and can be left alone.
 5. **Run**:
    ```sh
@@ -80,10 +79,6 @@ they register globally, which Discord can take up to an hour to propagate; with 
 register to that server instead and appear immediately, so use it while developing and leave it
 unset in production.
 
-Either way, the lobby commands register only to `LOBBY_GUILD_ID`, which falls back to `GUILD_ID`
-when unset, so no other server ever sees them. With neither set they aren't registered anywhere,
-and the bot logs a warning on startup.
-
 ## Rate limiting
 
 Commands and button clicks are throttled by a **sliding window** one minute wide, in
@@ -96,13 +91,13 @@ inside its window, so the window moves continuously instead of resetting on a cl
 | `MAX_REQUESTS_PER_MINUTE` | 500 | Every command the bot handles, from every server and DM together. |
 | `MAX_REQUESTS_PER_SERVER_PER_MINUTE` | 50 | Every command in one server, from anyone. |
 | `MAX_REQUESTS_PER_USER_PER_MINUTE` | 10 | One person's commands, wherever they run them. |
-| `MAX_BUTTON_CLICKS_PER_MINUTE` | 1000 | Every button click (the lobby ones and **Post to channel**), from every server and DM together. |
+| `MAX_BUTTON_CLICKS_PER_MINUTE` | 1000 | Every **Post to channel** click, from every server and DM together. |
 | `MAX_BUTTON_CLICKS_PER_SERVER_PER_MINUTE` | 75 | Every button click in one server, from anyone. |
 | `MAX_BUTTON_CLICKS_PER_USER_PER_MINUTE` | 10 | One person's button clicks, wherever they click them. |
 
 Each must be whole and positive; anything else falls back to the default rather than leaving the
-bot unthrottled. Button clicks are counted separately from commands, since a busy lobby can see
-dozens of joins in a minute and those shouldn't lock everyone out of commands.
+bot unthrottled. Button clicks are counted separately from commands, so a burst of clicks
+can't lock everyone out of commands.
 
 The per-server limits keep one busy server from using up every other server's share, and the
 bot-wide limits are a safety cap above them all. DMs have no server, so only the per-user and
@@ -120,9 +115,6 @@ limit was hit. The only difference is who sees it:
 - **Every other limit** — an ephemeral reply only that person can see, keeping one person's spam
   out of the channel, and keeping one busy server's traffic out of every other server's channels.
 
-Anything else that turns someone away for going too fast uses the same notice, so it can't be
-told apart from a rate limit.
-
 Autocomplete is deliberately **not** throttled: it fires on every keystroke, it cannot be
 replied to, and it runs entirely from data already in memory.
 
@@ -136,228 +128,124 @@ typed, who ran it (name and user id) and where (channel, then server name and id
 it went:
 
 ```
-/createlobby code:DX89EE region:Europe description:"Casual, all welcome" from steve (284716395027349504) in #lobbies on "JonJ Bonfire" (1180412563857285120): done in 212ms
+/glossary term:"damage over time" from steve (284716395027349504) in #general on "TowerHub" (1180412563857285120): done in 212ms
 /item eternal:Dahla from alex (190553828741234688) in #general on Arkheron (1093476218840539156): throttled (server limit, 41s until a slot frees up)
-/lobbykick player:301958274610384896 from steve (284716395027349504) in #lobbies on "JonJ Bonfire" (1180412563857285120): failed after 35ms
+/faq topic:Beta from steve (284716395027349504) in #general on "TowerHub" (1180412563857285120): failed after 35ms
 ```
 
 Done lines go to stdout, throttled ones as warnings and failures as errors with the stack after
 them. Option values and server names with spaces or punctuation are quoted, so free text like a
-lobby description can't pass for the rest of the line. Autocomplete and button clicks aren't
+typed `/glossary term:` can't pass for the rest of the line. Autocomplete and button clicks aren't
 logged, except when a click is throttled or either one fails; those lines name the channel and
 server too.
 
-## Lobbies
+## Content
 
-Lobbies are for one server only. `/createlobby`, `/lobbies`, `/lobbyadd` and `/lobbykick` are
-registered to `LOBBY_GUILD_ID` alone, so no other server can see or run them; see
-[Setup](#setup).
+Eternals, items and the glossary come from the [TowerHub](https://towerhub.io) API. Everything
+else lives in this repo as files, which can be edited without touching code. Restart the bot to
+pick up changes to them.
 
-`/createlobby code:DX89EE region:Europe` posts a lobby in the lobby channel (`LOBBY_CHANNEL_ID`;
-unset, any channel in the lobby server works). Codes are six letters or digits and are stored
-in capitals, so `dx89ee` works too. Regions are North America, South America, Europe and Asia. The optional
-`mode:` is Ascension or Spires, and shows on the post and in `/lobbies` when set. The optional
-`description:` is a note of up to 100 characters, like `Casual, all welcome`, and shows on the
-post only.
-
-The post shows the region, the mode and description if given, when the lobby expires, and the numbered roster with the host
-marked 👑. It has three buttons:
-
-- **Join** — adds you to the lobby. Joining moves you out of any other lobby, since nobody can
-  be in two; at 45 players, joining is refused. Clicking it while already in the lobby gets an
-  ephemeral error.
-- **Leave** — removes you from the lobby; clicking it while not in the lobby gets an ephemeral
-  error. If the host leaves, whoever has been in the lobby longest takes over. When the last
-  player leaves, the lobby closes.
-- **⚙️** — opens a **Lobby Management** panel only the host can see; anyone else is told only
-  the host can manage the lobby. The panel has two buttons:
-  - **Bump** — reposts the lobby as the channel's latest message and deletes the old post, so it
-    isn't buried under chat. Counts as activity, so it pushes back expiry too, up to the 6 hour
-    limit (see [Expiry](#expiry)). The new post is
-    a plain message rather than a reply, so like **Post to channel** it needs the bot to be able
-    to send messages and embed links in the lobby channel. The new post goes up before the old
-    one comes down, so a failed bump leaves the lobby where it was.
-  - **Close Lobby** — closes the lobby and deletes the post immediately.
-
-  If the host leaves after opening the panel, its buttons stop working for them.
-
-The host adds players with `/lobbyadd player:`, picking any member of the server. Unlike
-**Join**, adding never moves anyone: someone already in another lobby has to leave it first,
-and the host is told which lobby they're in. Bots can't be added, and a full lobby refuses.
-
-The host removes players with `/lobbykick player:`, whose `player:` option autocompletes
-against their own roster as they type, rather than listing everyone at once. Kicked players
-can rejoin; kicking is for keeping the roster accurate, not moderation.
-
-The `/createlobby` user is in the lobby too, so creating a lobby also moves them out of any other.
-At most 50 lobbies can be open at once, and two can't share a code.
-
-However a lobby closes — the host closes it, the last player leaves, or it expires — its post
-is deleted.
-
-### Expiry
-
-A lobby expires 1 hour after anyone last joined, left, or was added or kicked, or the host last bumped it,
-or 6 hours after it was created, whichever comes first. Nothing keeps a lobby open past 6 hours, so
-nobody can hold a code or a slot in the pool indefinitely. The post's expiry time
-uses a Discord timestamp, so it counts down on its own without the bot editing the post.
-
-10 minutes before a lobby expires, the bot DMs its host that the lobby is expiring soon, asking
-them to bump it if it's still active or close it if not, with a **Go to lobby** link to the post.
-The post's ⚙️ panel does both, and the post shows the current expiry even if someone has joined
-since the DM went out. Any activity resets the clock, so a host is warned again only if the
-lobby goes quiet again. Near the 6 hour limit, when a bump can no longer help, the DM instead tells
-the host the lobby is about to close, and is sent once however busy the lobby is. A host who doesn't
-accept DMs from server members gets no warning, and the lobby still expires on time.
-
-Each lobby stores when it was created and last active, and those alone decide whether it's open. Every
-click and command checks it first, so an expired lobby can't be joined or listed even a second
-late. A once-a-minute sweep then deletes the posts of lobbies that expired while nobody was
-looking, and sends the expiry warnings, so a warning arrives 9 to 10 minutes before expiry. It only tidies up, so nothing goes wrong if it runs late. Per-lobby timers were
-avoided because codes are reused: a timer left running for a closed lobby could fire later and
-delete a new lobby with the same code. Every button also carries its lobby's unique id, so a
-button left on an old post can't act on a newer lobby with the same code.
-
-Nothing tells the bot who is actually in a game lobby, so the roster stays accurate through:
-moving players out when they join elsewhere, host kicks, and expiry. If an absent host's lobby
-fills up with people who have gone, nobody can join, so it goes quiet and expires.
-
-Lobbies live in memory, so **a restart or redeploy clears them**. Their posts stay up until
-someone clicks one, which deletes it.
-
-## Editing the content
-
-Content lives in JSON so it can be edited without touching code. Restart the bot to pick up changes.
-
-| File | Holds |
+| Source | Holds |
 | --- | --- |
-| `data/eternals.json` | The 12 eternals. Their `items` are **ids into `items.json`**, not inline objects. |
-| `data/items.json` | All 72 items: 48 eternal-specific, plus generic Echo crowns/amulets/weapons, anchors and consumables. |
-| `data/glossary.json` | The 79 glossary terms. |
+| `GET /api/system/gamedata` | Every eternal and every item in the game, as of the latest patch. |
+| `GET /api/mechanics` | Every glossary term. |
+| `GET /api/guides`, `GET /api/builds` | Published guides and builds, filtered and paged by TowerHub. Each also has `/{slug}` for one, and `/authors` for the usernames that have published. |
 | `data/faq.json` | FAQ topics, each a list of `question`/`answer` pairs plus optional `aliases` (`playtest` → Beta). `/faq` numbers them in file order. |
 | `data/socials.json` | Social links, each a `name`/`url` pair. `/socials` lists them in file order. |
-| `images/items/`, `images/eternals/` | Item icons and eternal portraits, one PNG per id. |
-
-An item belongs to an eternal purely by being listed in that eternal's `items` array — there is
-no back-reference to maintain. Anything no eternal lists is a generic item, which is how `/item`
-tells them apart. Startup fails loudly if an eternal names an id that `items.json` does not have.
+| `images/items/`, `images/eternals/` | Item icons and eternal portraits, one PNG per TowerHub slug. |
 
 Run `npm test` after editing. It checks the content more thoroughly than startup does, from
 missing images to aliases that clash; see [Testing](#testing).
 
-Icons and portraits are local files, downloaded from the wiki: `icon` on each item and
-`imageUrl` on each eternal hold a path relative to the project root (`images/items/bow.png`), not
-a URL. The embed thumbnail points at the same file in this repo on GitHub, under `IMAGE_BASE_URL`
-(default: `https://raw.githubusercontent.com/emsimpson92/JonJBonfireBot/main/`). Discord fetches
-it once and caches it. The wiki's own image links didn't load in Discord. `npm test` checks that
-every path exists; the bot itself doesn't, and a wrong one just leaves the embed without a thumbnail.
+### Game data
 
-To add one, drop a PNG into `images/` and set the path; anything about 256px across is plenty,
+The bot loads the game data before it logs in and keeps it in memory for 30 minutes
+([src/gameData.ts](src/gameData.ts)). Discord allows 3 seconds to answer a command and TowerHub can
+take longer than that, so nothing that reads game data waits on it. Once the data expires, the next
+command or autocomplete keystroke is answered from what's in memory and starts a refresh, which
+everything arriving in the meantime shares. So that one answer can be older than 30 minutes; the
+ones after it aren't.
+
+If a refresh fails, the bot keeps what it has and tries again a minute later. If TowerHub is down
+when the bot starts, it logs in anyway: `/faq`, `/socials` and `/help` work, and the game commands
+answer *Try again in a moment* until a load succeeds. Set `TOWERHUB_URL` to use another instance,
+such as a local one on `http://localhost:5080`.
+
+A change on TowerHub needs no restart or deploy here. New eternals appear in `/eternals` and
+`/item eternal:` by themselves, because those options use autocomplete rather than a list
+registered with Discord. TowerHub imports a new eternal with its title and description blank until
+someone writes them, so the embeds leave out whatever is empty.
+
+How the embeds read TowerHub's model:
+
+- **Ownership** is on the item (`eternalSlug`). An item with none is an Echo item, which is what
+  `/item eternal:Echo` lists.
+- **Weapons** always have two abilities, the primary basic attack then the secondary one on a
+  cooldown. The embed labels them by that order.
+- **Levels** hold an ability's full stats at each level, so the embed shows the first level in
+  full and only what changes after that, numbered like the game (`II`, `III`). Core abilities and
+  basic attacks have one level. `damageText` is free text such as `15 / 15 / 10+10`, shown as
+  **Damage**.
+- **`upgradeEffect`** is dropped only when it merely restates the numbers ("Blind Duration 6s" vs
+  "Blind duration increased to 6 seconds"). Text that adds something, or that leaves the number
+  out ("Radius increased"), is shown alongside them.
+- **Mechanics** are glossary terms, so `/glossary` explains them. One that arrives with an upgrade
+  names the level, like `Invulnerable III`.
+- **Links** go to TowerHub. A detail embed's title opens that eternal's or item's page, and a
+  list's title opens `/eternals`, or `/items` filtered like the list. TowerHub has no Echo filter,
+  so an Echo list opens on everything in its slot. Item and eternal names inside these embeds
+  link to their own pages.
+
+There are no per-character health/damage/speed stats — every player has the same 200 Essence
+and 100 Fortitude.
+
+### Guides and builds
+
+`/guide` and `/build` ask TowerHub every time ([src/community.ts](src/community.ts)), as each search
+is its own and a deleted guide should go at once. That makes them the only commands that wait on
+it ([src/utils/browse.ts](src/utils/browse.ts)):
+
+- **Commands** defer, which shows Discord's loading message and allows 15 minutes instead of 3
+  seconds, then edit that message with the answer. If TowerHub fails, the message says it's
+  unavailable and to try again later.
+- **Autocomplete** can't defer, so a suggestion gives up after 2 seconds and answers with none.
+  Suggestions are cached for 30 seconds ([src/utils/ttlCache.ts](src/utils/ttlCache.ts)), so
+  typing the same thing again, or several people doing so, costs one request.
+- **Filters** go to TowerHub under the same names its site reads from the address, so a list's title
+  opens that same list. A list stops at 10, and paging through the rest happens on TowerHub.
+- **A picked suggestion** is sent as `slug:<slug>` and opened directly. Titles aren't unique, and
+  TowerHub's search doesn't read slugs.
+
+Anyone with a TowerHub username writes this text, so unlike game data it can't be trusted to behave
+in an embed ([src/utils/markdown.ts](src/utils/markdown.ts)). Titles, names, usernames and summaries
+are escaped to show as typed, and a build's Markdown summary is flattened to plain text. A title
+inside the bot's own `[label](url)` has its square brackets turned into round ones, so `[S Tier]`
+shows as `(S Tier)`, as a bracket could otherwise end the label early. Footers and autocomplete
+choices don't render Markdown and need none of this.
+
+A guide's body stays on TowerHub: it can run to 20,000 characters of tables and images. Only
+`eternal/<slug>` thumbnails show, as the bot has no copy of TowerHub's other art.
+
+### Images
+
+Icons and portraits are local files named after the TowerHub slug (`images/items/bow.png`).
+TowerHub's API doesn't say where its art is, and the file names change with each of its builds.
+The embed thumbnail points at the same file in this repo on GitHub, under `IMAGE_BASE_URL`
+(default: `https://raw.githubusercontent.com/TowerDB/TowerHubDiscordBot/main/`). Discord fetches
+it once and caches it. `npm test` checks every slug in the saved TowerHub data; the bot itself
+doesn't, and a missing file just leaves the embed without a thumbnail. That's what a new item
+gets until someone adds its PNG, and what Refill Consumables gets today.
+
+To add one, drop a PNG into `images/`, named after the slug; anything about 256px across is plenty,
 since Discord shows thumbnails at 80px. **It only shows up once it's on `main`** (or whichever
 branch `IMAGE_BASE_URL` names). Replacing an image under the same name can keep showing the old
-one for a while, because Discord caches by URL, so give a changed image a new file name.
-
-The eternals, items and glossary, and the images, are a **one-time copy from the wiki — nothing
-syncs.** Wiki edits will not propagate, so re-check them when the game patches.
-
-- **`data/eternals.json`** — one object per eternal:
-  ```json
-  {
-    "id": "dahla",
-    "name": "Dahla",
-    "title": "The Dancer",
-    "inRotation": true,
-    "description": "Shown as the embed body.",
-    "coreAbility": {
-      "name": "Curtain Call",
-      "description": "Pull in distant enemies, stunning them.",
-      "tags": ["Cone Attack", "Stun"],
-      "stats": [
-        { "name": "Damage", "value": "35" },
-        { "name": "Cooldown", "value": "25s" },
-        { "name": "Range", "value": "9m" },
-        { "name": "Stun", "value": "1s" }
-      ]
-    },
-    "setBonus": { "name": "Deep Pockets", "description": "Max stack of consumables increased" },
-    "items": ["dahlas-vanish-crown", "dahlas-petal-dance-amulet", "dahlas-dancing-blade", "dahlas-throwing-knives"],
-    "wikiUrl": "https://arkheron.wiki.gg/wiki/Dahla",
-    "imageUrl": "images/eternals/dahla.png",
-    "aliases": ["dancer"]
-  }
-  ```
-
-- **`data/items.json`** — one object per item, referenced by `id`:
-  ```json
-  {
-    "id": "dahlas-vanish-crown",
-    "name": "Vanish Crown",
-    "slot": "Crown",
-    "icon": "images/items/dahlas-vanish-crown.png",
-    "abilities": [
-      {
-        "name": "Vanish",
-        "description": "Transform into an invulnerable fast-moving orb…",
-        "tags": ["Phased", "Movement Increase", "Invisible"],
-        "stats": { "Cooldown": "15s", "Duration": "1.5s" },
-        "upgrades": [
-          { "tier": "II", "changes": { "Cooldown": "12s" } },
-          { "tier": "III", "effect": "When leaving Vanish, you are invulnerable to damage for 1 second" }
-        ]
-      }
-    ]
-  }
-  ```
-  `name` leaves off the owner: the wiki's *Dahla's Vanish Crown* is `Vanish Crown`. The embeds
-  show the owner alongside the name, and the wiki link puts it back to reach the item's section.
-
-  `slot` is `Crown`, `Amulet`, `Weapon`, `Anchor` or `Consumable`. Eternal weapons name their
-  type, e.g. `Weapon (Sword)`; the `slot:` filter matches them all as weapons.
-  Anchors and consumables grant no separate ability: they carry a `description` and optional
-  `stats` directly, with `abilities` left empty. Echo items have no tiers, so their abilities
-  have `stats` and no `upgrades`.
-  **Items hold abilities; abilities hold base stats plus upgrades.** Crowns and amulets grant
-  one ability; every weapon grants two, tagged `"input": "primary"` (the basic attack) and
-  `"secondary"` (the one on a cooldown).
-
-  `stats` is Tier I in full. Each entry in `upgrades` is a tier above that, carrying only what
-  it adds: `changes` for the stats it moves, `effect` for the wiki's prose where a tier grants
-  a trait no number captures ("Eliminations reset cooldown"). A tier that changes nothing is
-  omitted. All abilities stop at III
-
-  Where a tier has both `changes` and `effect`, the renderer drops the prose only when it
-  merely restates the numbers ("Blind Duration 6s" vs "Blind duration increased to 6 seconds");
-  prose that adds something survives alongside them.
-
-  `stats` and `changes` are open maps because labels vary per ability (Cooldown, Ammo, Weaken
-  Percentage, Damage Shared…), and their values are strings because the wiki writes things like
-  `20 / 30 + 15 DoT`. An ability's `description` and `tags` are optional — several basic
-  attacks are listed on the wiki with neither and render as stats only. `tags` are glossary
-  terms, so `/glossary` explains what a tag means.
-
-  On the eternal itself, `coreAbility.stats` lists `name`/`value` pairs. Names are limited to
-  `CoreStatName` in [src/types.ts](src/types.ts) (Damage, Cooldown, Range, Stun, Lifesteal,
-  Duration, Speed Decrease, Speed Increase), and only the stats listed are shown: Rynshi's
-  Rampage has no Damage line because it deals none. `inRotation` is required and says whether
-  the eternal is currently in the game's rotation; `/randombuild` leaves out the items of
-  eternals that aren't. `stats`, `imageUrl` and `aliases` are optional. Eternal `aliases` are not currently used, since `/eternals name:` is a pick-list.
-
-  There are no per-character health/damage/speed stats — every player has the same 200 Essence
-  and 100 Fortitude. `imageUrl` puts a portrait thumbnail on the embed.
-
-- **`data/glossary.json`** — one object per term: `term`, `definition`, optional `aliases`.
-  Sourced from the [Arkheron Wiki glossary](https://arkheron.wiki.gg/wiki/Glossary); definitions
-  are verbatim, `aliases` are additions for lookup convenience (`hp` → Essence, `dot` →
-  Damage over Time, `reaver` → Tormentors). Entries the wiki marks outdated (Reflect,
-  Resilience, Soft Target) are kept so the bot can point people at the current term.
+one for a while, because Discord caches by URL.
 
 ## Adding a command
 
 1. Create `src/commands/yourCommand.ts` exporting a `Command` (see [src/types.ts](src/types.ts)).
    Give it a `SlashCommandBuilder` as `data`, plus `usage` and `examples` for /help.
-2. Add it to the `commands` array in [src/commands/registry.ts](src/commands/registry.ts). If
-   it's part of the lobby feature, add it to `lobbyCommands` there too, so it's registered only
-   to the lobby server.
+2. Add it to the `commands` array in [src/commands/registry.ts](src/commands/registry.ts).
 
 `/help` reads that array, so the new command documents itself. The tests read it too, and check
 that its `usage` and `examples` name it and that it has an `autocomplete` handler if any option
@@ -375,47 +263,68 @@ request and push to `main`, alongside typecheck, lint and build. None of them ta
 the logic is tested as plain functions, and the rest checks the content against what Discord
 will accept.
 
-- **Logic.** `lobbies.test.ts`, `lobbyMessages.test.ts`, `rateLimit.test.ts`, `search.test.ts`,
-  `share.test.ts` and `logging.test.ts` cover the lobby rules (hosting, joining, adding, kicking, expiry), the
-  host's ⚙️ panel and its Bump and Close Lobby buttons, the expiry DM, the sliding-window limits, lookup
-  ranking and typo tolerance, the Post to channel button, and how commands appear in the logs. The lobby store and the rate limiter both take the current time as an
-  argument, so expiry and windows are tested by passing timestamps rather than waiting.
-- **Content.** `data.test.ts` checks the JSON: unique ids, each eternal carrying a crown, an
-  amulet and two weapons, every image path existing, every ability tag having a glossary
-  entry, and every item name, glossary term, FAQ topic and alias finding only its own entry.
-  An alias shared by two entries makes the bot list both instead of answering.
-- **Embeds.** `embeds.test.ts` renders every embed the bot can send from the real data, every
-  `/item eternal: slot:` combination, a full lobby and a full `/lobbies` list. It fails if one
-  would break Discord's limits or have its text cut short. `commands.test.ts` checks that every
-  command registers and documents itself as described in [Adding a command](#adding-a-command),
-  and that the lobby commands are registered to, run in and listed by `/help` in the lobby server
-  only.
+- **Logic.** `rateLimit.test.ts`, `search.test.ts`, `share.test.ts` and `logging.test.ts` cover
+  the sliding-window limits, lookup ranking and typo tolerance, the Post to channel button, and
+  how commands appear in the logs. The rate limiter takes the current time as an argument, so
+  windows are tested by passing timestamps rather than waiting. `replies.test.ts` covers how a
+  failure is reported, depending on what the command or button had already done, and
+  `markdown.test.ts` how text written by users is made safe to show.
+- **Guides and builds.** `community.test.ts` runs `/guide` and `/build` against a stubbed TowerHub:
+  which address each option becomes, one match against several against none, and suggestions when
+  TowerHub fails. There are no saved responses for these, as the embeds are tested with hand-written
+  ones in `helpers.ts`, including text written to break them.
+- **Game data cache.** `gameData.test.ts` covers the 30-minute expiry, answering from what's in
+  memory during a refresh, sharing one refresh, and keeping good data through a failed one. It
+  tells time with fake timers rather than waiting.
+- **Content.** `data.test.ts` checks the files and a saved copy of TowerHub's responses in
+  `tests/fixtures/`, which `tests/setup.ts` loads the way the bot does at startup, so nothing
+  reaches the network: unique slugs, each eternal carrying a crown, an amulet and two weapons, an
+  image for each slug, every mechanic having a glossary entry, and every item name, glossary
+  term, FAQ topic and alias finding only its own entry. An alias shared by two entries makes the
+  bot list both instead of answering.
+- **Embeds.** `embeds.test.ts` renders every embed the bot can send from the saved data, and
+  every `/item eternal: slot:` combination. It fails if one would break Discord's limits or have
+  its text cut short. `commands.test.ts` checks that every command registers and documents itself
+  as described in [Adding a command](#adding-a-command).
 
-After a content edit, a failure names the entry to fix: an alias that's another item's name, a
-tag missing from the glossary, an ability too long for its embed.
+After a content edit, a failure names the entry to fix: an alias that's another topic's name, a
+mechanic missing from the glossary, an ability too long for its embed.
+
+The saved copy doesn't update itself, and what's live on TowerHub isn't tested. To check a new
+patch against the tests, refresh it and run them:
+
+```sh
+curl -o tests/fixtures/gamedata.json https://towerhub.io/api/system/gamedata
+curl -o tests/fixtures/mechanics.json https://towerhub.io/api/mechanics
+```
 
 ## Layout
 
 ```
-data/          Content: eternals, items, glossary, faq and socials JSON
+data/          Content kept here: faq and socials JSON
 images/        Item icons and eternal portraits
 src/
   index.ts     Client setup, command registration, interaction dispatch, shutdown
   config.ts    Env vars, with defaults for the optional ones
   rateLimit.ts Sliding-window throttling, bot-wide, per server and per user
-  lobbies.ts   Lobby state and rules: joining, leaving, adding, kicking, expiry
-  lobbyMessages.ts  Lobby post buttons, the host's panel, clicks, post updates, the expiry sweep and DM
   share.ts     The Post to channel button on private replies, and its click
   data.ts      Loads and validates the JSON files
-  types.ts     Command and the content types: Eternal, Item, GlossaryEntry, FaqTopic, SocialLink
+  gameData.ts  Eternals, items and the glossary from TowerHub, cached in memory for 30 minutes
+  community.ts Guides and builds from TowerHub, never cached
+  types.ts     Command, TowerHub's models and the content types: Eternal, Item, FaqTopic, SocialLink
   commands/    One file per command, plus registry.ts
-  embeds/      The embeds, one file per concept (eternals, items, lobbies…), with the shared
+  embeds/      The embeds, one file per concept (eternals, items, glossary…), with the shared
                builders in general.ts
   utils/       Helpers that aren't embeds, one file per concept, with the shared ones
-               (truncation, normalizing, timestamps) in general.ts
+               (truncation, normalizing) in general.ts
     discordLimits.ts  Discord's embed, message and autocomplete limits, in one place
     search.ts  Name/alias matching with typo tolerance, lookup replies, autocomplete
+    browse.ts  /guide and /build's search, reply and suggestions, which wait on TowerHub
+    markdown.ts  Making text written by users safe to show in an embed
+    replies.ts  Answering a deferred command, and reporting a failure
     images.ts  Image paths to their GitHub URLs
+    towerhub.ts  TowerHub's API and page addresses
+    abilities.ts  An ability's text: stats by level, upgrades and mechanics
     logging.ts The one-line description of a command in the logs
-tests/         Vitest tests, one file per area; see Testing
+tests/         Vitest tests, one file per area, and a saved copy of TowerHub's responses; see Testing
 ```

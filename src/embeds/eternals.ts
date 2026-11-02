@@ -1,46 +1,40 @@
-import { itemsOf } from '../data.js';
-import { publicUrl } from '../utils/images.js';
+import { itemsOf } from '../gameData.js';
 import type { Eternal } from '../types.js';
+import { abilityBlock, NOTHING_YET } from '../utils/abilities.js';
 import { MAX_FIELD_VALUE } from '../utils/discordLimits.js';
 import { truncate } from '../utils/general.js';
+import { eternalPortrait } from '../utils/images.js';
+import { eternalLink, eternalsUrl, eternalUrl, itemLink } from '../utils/towerhub.js';
 import { baseEmbed } from './general.js';
 
 export function eternalDetailEmbed(eternal: Eternal) {
-  const { coreAbility: core } = eternal;
+  const { ability } = eternal;
 
-  let abilityValue = `${core.description}\n${core.tags.map((tag) => `\`${tag}\``).join(' ')}`;
+  const title = [eternal.name, eternal.title].filter(Boolean).join(' — ');
+  const embed = baseEmbed(title, eternal.description).setURL(eternalUrl(eternal)).setThumbnail(eternalPortrait(eternal));
 
-  // Eternal ability details
-  if (core.stats?.length) {
-    const parts = core.stats.map((stat) => `**${stat.name}:** ${stat.value}`);
-    abilityValue += `\n${parts.join('\n')}`;
+  if (ability) {
+    embed.addFields({ name: `Eternal Ability: ${ability.name}`, value: truncate(abilityBlock(ability), MAX_FIELD_VALUE) });
   }
-
-  const embed = baseEmbed(`${eternal.name} — ${eternal.title}`, eternal.description).setURL(eternal.wikiUrl)
-    .addFields({
-      name: `Eternal Ability: ${core.name}`,
-      value: abilityValue,
-    });
 
   // Set bonus
-  embed.addFields({ name: `Set Bonus: ${eternal.setBonus.name}`, value: eternal.setBonus.description });
+  embed.addFields({
+    name: `Set Bonus: ${eternal.setBonusName}`,
+    value: truncate(eternal.setBonusDescription || NOTHING_YET, MAX_FIELD_VALUE),
+  });
 
   // Item list. Item abilities can be found using /item
-  const itemLines = itemsOf(eternal).map((item) => `\`${item.slot}\` **${item.name}**`);
+  const itemLines = itemsOf(eternal).map((item) => `\`${item.slot}\` **${itemLink(item)}**`);
   if (itemLines.length) {
     embed.addFields({ name: 'Items', value: truncate(itemLines.join('\n'), MAX_FIELD_VALUE) });
-  }
-
-  if (eternal.imageUrl) {
-    embed.setThumbnail(publicUrl(eternal.imageUrl));
   }
 
   return embed.setFooter({ text: "/item for an item's abilities · /glossary explains any tag" });
 }
 
 export function eternalListEmbed(eternals: Eternal[]) {
-  const lines = eternals.map((eternal) => `**${eternal.name}**`).join('\n');
-  return baseEmbed(`Eternals (${eternals.length})`, lines || 'No eternals are configured yet.').setFooter({
+  const lines = eternals.map((eternal) => `**${eternalLink(eternal)}**`).join('\n');
+  return baseEmbed(`Eternals (${eternals.length})`, lines || 'No eternals are configured yet.').setURL(eternalsUrl()).setFooter({
     text: 'Use /eternals <name> for details on one.',
   });
 }

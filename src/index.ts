@@ -1,12 +1,13 @@
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 import type { ChatInputCommandInteraction, MessageComponentInteraction } from 'discord.js';
-import { findCommand, registrations } from './commands/registry.js';
+import { commands, findCommand } from './commands/registry.js';
 import { config } from './config.js';
-import { ephemeralError, slowDown } from './embeds/general.js';
-import { handleLobbyComponent, isLobbyComponent, startLobbySweep } from './lobbyMessages.js';
+import { slowDown } from './embeds/general.js';
+import { refreshGameData } from './gameData.js';
 import { Cooldown, RateLimiter } from './rateLimit.js';
 import { handleShare, isShareComponent } from './share.js';
 import { describeCommand, describePlace } from './utils/logging.js';
+import { replyWithFailure } from './utils/replies.js';
 
 /** Don't let bad things happen. The show must go on */
 process.on('unhandledRejection', (reason) => console.error('Unhandled promise rejection:', reason));
@@ -29,36 +30,29 @@ const CHANNEL_NOTICE_COOLDOWN_MS = 60_000;
 const channelNotices = new Cooldown();
 
 client.once(Events.ClientReady, async (ready) => {
-  if (!config.lobbyGuildId) {
-    console.warn('LOBBY_GUILD_ID is not set, so the lobby commands are not registered anywhere.');
-  }
+  const payload = commands.map((command) => command.data);
 
-  for (const [guildId, list] of registrations(config.guildId, config.lobbyGuildId)) {
-    const payload = list.map((command) => command.data);
-
-    try {
-      if (guildId) {
-        const guild = await ready.guilds.fetch(guildId);
-        await guild.commands.set(payload);
-        console.log(`Registered ${payload.length} commands to ${guild.name}.`);
-      }
-      else {
-        await ready.application.commands.set(payload);
-        console.log(`Registered ${payload.length} commands globally (may take up to an hour to appear).`);
-      }
+  try {
+    if (config.guildId) {
+      const guild = await ready.guilds.fetch(config.guildId);
+      await guild.commands.set(payload);
+      console.log(`Registered ${payload.length} commands to ${guild.name}.`);
     }
-    catch (error) {
-      console.error(`Failed to register commands ${guildId ? `to server ${guildId}` : 'globally'}:`, error);
+    else {
+      await ready.application.commands.set(payload);
+      console.log(`Registered ${payload.length} commands globally (may take up to an hour to appear).`);
     }
   }
+  catch (error) {
+    console.error(`Failed to register commands ${config.guildId ? `to server ${config.guildId}` : 'globally'}:`, error);
+  }
 
-  startLobbySweep(ready);
   console.log(`Logged in as ${ready.user.tag}.`);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isAutocomplete()) {
-    const command = findCommand(interaction.commandName, interaction.guildId);
+    const command = findCommand(interaction.commandName);
     try {
       await command?.autocomplete?.(interaction);
     }
@@ -78,8 +72,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // Lobby commands only exist in the lobby server, so they aren't found anywhere else
-  const command = findCommand(interaction.commandName, interaction.guildId);
+  const command = findCommand(interaction.commandName);
   if (!command) {
     return;
   }
@@ -110,22 +103,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-/** The handler for a button id, or undefined for one this bot didn't make. */
-function componentHandler(id: string) {
-  if (isLobbyComponent(id)) {
-    return handleLobbyComponent;
-  }
-  else if (isShareComponent(id)) {
-    return handleShare;
-  }
-
-  return undefined;
-}
-
-/** Lobby and Post to channel buttons. Only the clicker needs to know they were throttled, so they're told privately, whichever limit it was. */
+/** Post to channel buttons. Only the clicker needs to know they were throttled, so they're told privately, whichever limit it was. */
 async function handleComponent(interaction: MessageComponentInteraction): Promise<void> {
-  const handler = componentHandler(interaction.customId);
-  if (!handler) {
+  if (!isShareComponent(interaction.customId)) {
     return;
   }
 
@@ -141,23 +121,12 @@ async function handleComponent(interaction: MessageComponentInteraction): Promis
   }
 
   try {
-    await handler(interaction);
+    await handleShare(interaction);
   }
   catch (error) {
     console.error(`Button "${interaction.customId}" in ${describePlace(interaction)} failed:`, error);
     await replyWithFailure(interaction, 'That didn\'t work. Try again in a moment.');
   }
-}
-
-async function replyWithFailure(
-  interaction: ChatInputCommandInteraction | MessageComponentInteraction,
-  description: string,
-): Promise<void> {
-  const body = ephemeralError('Something went wrong', description);
-  await (interaction.replied || interaction.deferred ? 
-    interaction.followUp(body) : 
-    interaction.reply(body)
-  ).catch(() => undefined);
 }
 
 async function warnThrottled(
@@ -175,6 +144,10 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     void client.destroy().finally(() => process.exit(0));
   });
 }
+
+// Commands answer from this, so fill it before any can arrive. If TowerHub is down the bot starts anyway:
+// /faq, /socials and /help don't need it, and the game commands try again when they're next run.
+await refreshGameData();
 
 client.login(config.token).catch((error: unknown) => {
   console.error('Failed to log in:', error);

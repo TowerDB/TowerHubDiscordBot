@@ -30,4 +30,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Same Dockerfile Railway builds, so a broken image fails here before it reaches deploy.
-      - run: docker build -t jonj-bonfire-bot .
+      - run: docker build -t towerhub-bot .

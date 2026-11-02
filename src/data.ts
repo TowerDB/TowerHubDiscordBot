@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { Eternal, FaqTopic, GlossaryEntry, Item, SocialLink } from './types.js';
+import type { FaqTopic, SocialLink } from './types.js';
 import { MAX_FIELD_VALUE, MAX_MESSAGE_CHARS } from './utils/discordLimits.js';
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'data');
@@ -17,8 +17,6 @@ function load<T>(file: string): T[] {
   return parsed as T[];
 }
 
-export const eternals: Eternal[] = load<Eternal>('eternals.json');
-export const glossary: GlossaryEntry[] = load<GlossaryEntry>('glossary.json');
 export const faq: FaqTopic[] = load<FaqTopic>('faq.json');
 export const socials: SocialLink[] = load<SocialLink>('socials.json');
 
@@ -39,47 +37,4 @@ for (const { topic, entries } of faq) {
   if (length > MAX_MESSAGE_CHARS) {
     throw new Error(`FAQ topic "${topic}" is ${length} characters; one topic must fit in ${MAX_MESSAGE_CHARS}.`);
   }
-}
-
-const allItems: Item[] = load<Item>('items.json');
-const itemsById = new Map(allItems.map((item) => [item.id, item]));
-
-export interface OwnedItem {
-  item: Item;
-  eternal?: Eternal;
-}
-
-const ownerById = new Map<string, Eternal>();
-for (const eternal of eternals) {
-  for (const id of eternal.items) {
-    if (!itemsById.has(id)) {
-      throw new Error(`${eternal.id} references unknown item "${id}" in items.json`);
-    }
-    ownerById.set(id, eternal);
-  }
-}
-
-export const items: OwnedItem[] = allItems.map((item) => {
-  const eternal = ownerById.get(item.id);
-  return eternal ? { item, eternal } : { item };
-});
-
-export function filterItems(owner: string | null, slot: string | null): OwnedItem[] {
-  let matches = items;
-  if (owner === 'echo') {
-    matches = matches.filter(({ eternal }) => !eternal);
-  }
-  else if (owner) {
-    matches = matches.filter(({ eternal }) => eternal?.id === owner);
-  }
-  if (slot) {
-    matches = matches.filter(({ item }) => item.slot.toLowerCase().startsWith(slot));
-  }
-
-  return matches;
-}
-
-/** The four items an eternal carries, resolved from their ids. */
-export function itemsOf(eternal: Eternal): Item[] {
-  return eternal.items.map((id) => itemsById.get(id) as Item);
 }
