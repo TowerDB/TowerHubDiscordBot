@@ -100,6 +100,33 @@ interface LookupReplies<T> {
   notFound: { title: string; description: string };
 }
 
+type OptionReplies<T> = Omit<LookupReplies<T>, 'render'>;
+
+/** Either the one item a typed option names, or the reply refusing it (several tied, or none close). */
+export type Resolved<T> =
+  | { item: T; refusal?: undefined }
+  | { item?: undefined; refusal: ReturnType<typeof ephemeral> };
+
+export function resolveOne<T>(
+  query: string,
+  items: T[],
+  keys: (item: T) => string[],
+  replies: OptionReplies<T>,
+): Resolved<T> {
+  const matches = findBest(query, items, keys);
+  const [only] = matches;
+
+  if (only && matches.length === 1) {
+    return { item: only };
+  }
+
+  if (matches.length > 1) {
+    return { refusal: ephemeral(multipleMatchesEmbed(replies.plural, query, matches.map(replies.label))) };
+  }
+
+  return { refusal: ephemeralError(replies.notFound.title, replies.notFound.description) };
+}
+
 export async function replyWithBest<T>(
   interaction: ChatInputCommandInteraction,
   query: string,
@@ -107,23 +134,9 @@ export async function replyWithBest<T>(
   keys: (item: T) => string[],
   replies: LookupReplies<T>,
 ): Promise<void> {
-  const matches = findBest(query, items, keys);
-  const [only] = matches;
+  const resolved = resolveOne(query, items, keys, replies);
 
-  if (only && matches.length === 1) {
-    const embed = replies.render(only);
-    await interaction.reply(shareable(embed));
-
-    return;
-  }
-
-  if (matches.length > 1) {
-    await interaction.reply(ephemeral(multipleMatchesEmbed(replies.plural, query, matches.map(replies.label))));
-
-    return;
-  }
-
-  await interaction.reply(ephemeralError(replies.notFound.title, replies.notFound.description));
+  await interaction.reply(resolved.refusal ?? shareable(replies.render(resolved.item)));
 }
 
 function rankMatches<T>(

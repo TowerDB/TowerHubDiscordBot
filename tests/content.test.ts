@@ -2,12 +2,13 @@ import { MessageFlags } from 'discord.js';
 import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildCommand } from '../src/commands/build.js';
-import { guideCommand } from '../src/commands/guide.js';
-import { gameData } from '../src/gameData.js';
 import type { Command } from '../src/types.js';
 import { clearSuggestions } from '../src/utils/browse.js';
-import { build, buildSummary, guide, stubTowerHub } from './helpers.js';
+import { build, buildSummary, commandNamed, createTestApp, guide, stubTowerHub } from './helpers.js';
+
+const { gameData, content, registry } = await createTestApp();
+const buildCommand = commandNamed(registry, 'build');
+const guideCommand = commandNamed(registry, 'guide');
 
 const site = 'https://towerhub.io';
 
@@ -55,6 +56,7 @@ function requests(stub: ReturnType<typeof stubTowerHub>): URL[] {
 }
 
 afterEach(() => {
+  content.clear();
   clearSuggestions();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -294,7 +296,7 @@ describe('/build', () => {
   it('suggests eternals, without Echo, which TowerHub can\'t filter builds by', async () => {
     const choices = await suggest(buildCommand, { name: 'eternal', value: '' });
 
-    expect(choices.map(({ value }) => value)).toEqual(gameData().eternals.slice(0, 25).map(({ slug }) => slug));
+    expect(choices.map(({ value }) => value)).toEqual(gameData.get().eternals.slice(0, 25).map(({ slug }) => slug));
   });
 
   it('suggests items, sending the slug', async () => {

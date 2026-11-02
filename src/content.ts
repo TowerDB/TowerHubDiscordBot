@@ -5,13 +5,6 @@ import { fetchJson, filtered, findJson } from './utils/towerhub.js';
 /** Held for a short while, as every search is a call to TowerHub and people repeat themselves. A deleted guide lingers this long. */
 const TTL_MS = 30_000;
 const MAX_ENTRIES = 200;
-const lists = new TtlCache<PagedResults<unknown>>(TTL_MS, MAX_ENTRIES);
-const details = new TtlCache<unknown>(TTL_MS, MAX_ENTRIES);
-
-export function clearContentCache(): void {
-  lists.clear();
-  details.clear();
-}
 
 export interface Source<Summary, Details, Filters> {
   list(filters: Filters, pageSize: number, timeoutMs?: number): Promise<PagedResults<Summary>>;
@@ -21,7 +14,11 @@ export interface Source<Summary, Details, Filters> {
   authors(search: string, timeoutMs?: number): Promise<string[]>;
 }
 
-function source<Summary, Details, Filters extends ListFilters>(path: string): Source<Summary, Details, Filters> {
+function source<Summary, Details, Filters extends ListFilters>(
+  path: string,
+  lists: TtlCache<PagedResults<unknown>>,
+  details: TtlCache<unknown>,
+): Source<Summary, Details, Filters> {
   return {
     list: (filters, pageSize, timeoutMs) => {
       const address = filtered(path, { ...filters, pageSize: String(pageSize) });
@@ -37,6 +34,23 @@ function source<Summary, Details, Filters extends ListFilters>(path: string): So
   };
 }
 
-/** A whole guide adds only its body, which the bot doesn't show. */
-export const guides = source<GuideSummary, GuideSummary, GuideFilters>('/api/guides');
-export const builds = source<BuildSummary, BuildDetails, BuildFilters>('/api/builds');
+export interface Content {
+  /** A whole guide adds only its body, which the bot doesn't show. */
+  guides: Source<GuideSummary, GuideSummary, GuideFilters>;
+  builds: Source<BuildSummary, BuildDetails, BuildFilters>;
+  clear(): void;
+}
+
+export function createContent(): Content {
+  const lists = new TtlCache<PagedResults<unknown>>(TTL_MS, MAX_ENTRIES);
+  const details = new TtlCache<unknown>(TTL_MS, MAX_ENTRIES);
+
+  return {
+    guides: source<GuideSummary, GuideSummary, GuideFilters>('/api/guides', lists, details),
+    builds: source<BuildSummary, BuildDetails, BuildFilters>('/api/builds', lists, details),
+    clear: () => {
+      lists.clear();
+      details.clear();
+    },
+  };
+}

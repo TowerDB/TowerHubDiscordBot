@@ -1,4 +1,4 @@
-import { config } from '../config.js';
+import { getConfig } from '../config.js';
 import type { BuildFilters, BuildSummary, Eternal, GuideFilters, GuideSummary, Item, ListFilters } from '../types.js';
 import { escapeLabel } from './markdown.js';
 
@@ -11,7 +11,7 @@ const USER_AGENT = 'TowerHubDiscordBot (+https://towerhub.io)';
 /** TowerHub refused because too many questions were coming. Not an outage. */
 export class TowerHubBusyError extends Error {}
 
-const url = (path: string): string => new URL(path, config.towerHubUrl).href;
+const url = (path: string): string => new URL(path, getConfig().towerHubUrl).href;
 
 export const eternalsUrl = (): string => url('/eternals');
 export const eternalUrl = ({ slug }: Eternal): string => url(`/eternals/${slug}`);
@@ -21,7 +21,7 @@ export const buildUrl = ({ slug }: Pick<BuildSummary, 'slug'>): string => url(`/
 
 /** The address with each filter that has a value. */
 export function filtered(path: string, filters: ListFilters): string {
-  const address = new URL(path, config.towerHubUrl);
+  const address = new URL(path, getConfig().towerHubUrl);
   for (const [key, value] of Object.entries(filters)) {
     if (value) {
       address.searchParams.set(key, value);
@@ -47,7 +47,7 @@ export const buildLink = (build: BuildSummary): string => `[${escapeLabel(build.
 /** Undefined when TowerHub has nothing at that address. */
 export async function findJson<T>(path: string, timeoutMs = TIMEOUT_MS): Promise<T | undefined> {
   const response = await fetch(url(path), {
-    headers: { 'User-Agent': USER_AGENT, 'X-Bot-Key': config.towerHubBotKey },
+    headers: { 'User-Agent': USER_AGENT, 'X-Bot-Key': getConfig().towerHubBotKey },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (response.status === 404) {

@@ -4,8 +4,6 @@
 import type { ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { itemCommand } from '../src/commands/item.js';
-import { commands } from '../src/commands/registry.js';
 import { faq, socials } from '../src/data.js';
 import { buildEmbed, buildListEmbed } from '../src/embeds/builds.js';
 import { eternalDetailEmbed, eternalListEmbed } from '../src/embeds/eternals.js';
@@ -15,12 +13,15 @@ import { guideEmbed, guideListEmbed } from '../src/embeds/guides.js';
 import { helpDetailEmbed, helpOverviewEmbed } from '../src/embeds/help.js';
 import { itemDetailEmbeds } from '../src/embeds/items.js';
 import { socialsEmbed } from '../src/embeds/socials.js';
-import { gameData, type OwnedItem } from '../src/gameData.js';
+import type { OwnedItem } from '../src/gameData.js';
 import type { Ability, Eternal, Item } from '../src/types.js';
 import { embedLength, MAX_EMBED_DESCRIPTION, MAX_FIELD_NAME, MAX_FIELD_VALUE, MAX_MESSAGE_CHARS } from '../src/utils/discordLimits.js';
-import { build, buildSummary, choicesOf, guide } from './helpers.js';
+import { build, buildSummary, choicesOf, commandNamed, createTestApp, guide } from './helpers.js';
 
-const { eternals, glossary, items } = gameData();
+const { gameData, registry } = await createTestApp();
+const { commands } = registry;
+const itemCommand = commandNamed(registry, 'item');
+const { eternals, glossary, items } = gameData.get();
 
 /** truncate() cuts text to exactly its limit and ends it with "…", so text like that lost its end. */
 function cutShort(text: string | undefined, limit: number): boolean {
@@ -52,7 +53,7 @@ function problems(...embeds: EmbedBuilder[]): string[] {
 
 describe('detail embeds', () => {
   it.each(eternals.map((eternal) => [eternal.name, eternal] as const))('/eternals name:%s', (_, eternal) => {
-    expect(problems(eternalDetailEmbed(eternal))).toEqual([]);
+    expect(problems(eternalDetailEmbed(eternal, gameData.itemsOf(eternal)))).toEqual([]);
   });
 
   // Too long for its own embed, /item would fall back to a list without the abilities.
@@ -124,7 +125,7 @@ describe('links to TowerHub', () => {
   const site = 'https://towerhub.io';
 
   it.each(eternals.map((eternal) => [eternal.slug, eternal] as const))('/eternals name:%s opens its page', (slug, eternal) => {
-    expect(eternalDetailEmbed(eternal).data.url).toBe(`${site}/eternals/${slug}`);
+    expect(eternalDetailEmbed(eternal, gameData.itemsOf(eternal)).data.url).toBe(`${site}/eternals/${slug}`);
   });
 
   it.each(items.map((owned) => [owned.item.slug, owned] as const))('/item for %s opens its page', (slug, owned) => {
@@ -164,7 +165,7 @@ describe('links to TowerHub', () => {
 
   it('an eternal links each of its items', () => {
     const dahla = eternals.find((eternal) => eternal.slug === 'dahla') as Eternal;
-    const field = eternalDetailEmbed(dahla).data.fields?.find(({ name }) => name === 'Items');
+    const field = eternalDetailEmbed(dahla, gameData.itemsOf(dahla)).data.fields?.find(({ name }) => name === 'Items');
 
     expect(field?.value).toContain(`**[Vanish Crown](${site}/items/vanish-crown)**`);
   });
@@ -358,7 +359,7 @@ describe('builds', () => {
   it('lists each with its gear, leaving out the anchor and consumable', () => {
     const { description } = buildListEmbed({ items: [buildSummary()], total: 1 }, {}, []).data;
 
-    expect(description).toContain('**[Bleed Dahla](https://towerhub.io/builds/bleed-dahla)** — by Ravah\nVanish Crown · Petal Dance Amulet · Dancing Blade · Throwing Knives');
+    expect(description).toContain('**[Bleed Dahla](https://towerhub.io/builds/bleed-dahla)** - by Ravah\nVanish Crown · Petal Dance Amulet · Dancing Blade · Throwing Knives');
     expect(description).not.toContain('Some Anchor');
   });
 });
@@ -433,7 +434,7 @@ describe('a new eternal with its text still to come', () => {
   };
 
   it('still renders', () => {
-    const { title, description, fields } = eternalDetailEmbed(eternal).data;
+    const { title, description, fields } = eternalDetailEmbed(eternal, []).data;
 
     expect(title).toBe('Newcomer');
     expect(description).toBeUndefined();

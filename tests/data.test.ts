@@ -1,5 +1,5 @@
 // Importing data.ts runs its startup checks, so a broken JSON file fails here rather than on deploy.
-// The game data is the saved TowerHub copy that setup.ts loads.
+// The game data is the saved TowerHub copy that the helpers load.
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,16 +7,17 @@ import { describe, expect, it } from 'vitest';
 import { keys as eternalKeys } from '../src/commands/eternals.js';
 import { keys as faqKeys } from '../src/commands/faq.js';
 import { keys as glossaryKeys } from '../src/commands/glossary.js';
-import { itemCommand, keys as itemKeys } from '../src/commands/item.js';
+import { keys as itemKeys } from '../src/commands/item.js';
 import { faq } from '../src/data.js';
-import { filterItems, gameData, itemsOf } from '../src/gameData.js';
 import { normalize } from '../src/utils/general.js';
 import { findBest, MAX_QUERY_LENGTH } from '../src/utils/search.js';
-import { choicesOf } from './helpers.js';
+import { choicesOf, commandNamed, createTestApp } from './helpers.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const { eternals, glossary, items } = gameData();
+const { gameData, registry } = await createTestApp();
+const itemCommand = commandNamed(registry, 'item');
+const { eternals, glossary, items } = gameData.get();
 
 function duplicates(values: string[]): string[] {
   return values.filter((value, index) => values.indexOf(value) !== index);
@@ -29,7 +30,7 @@ describe('eternals', () => {
   });
 
   it.each(eternals.map((eternal) => [eternal.name, eternal] as const))('%s carries a crown, an amulet and two weapons', (_, eternal) => {
-    const slots = itemsOf(eternal).map((item) => item.slot).sort();
+    const slots = gameData.itemsOf(eternal).map((item) => item.slot).sort();
 
     expect(slots).toEqual(['Amulet', 'Crown', 'Weapon', 'Weapon']);
   });
@@ -55,7 +56,7 @@ describe('items', () => {
 
   it('are each reachable through one of /item\'s slot choices', () => {
     const slots = choicesOf(itemCommand, 'slot');
-    const unreachable = items.filter((owned) => !slots.some((slot) => filterItems(null, slot).includes(owned)));
+    const unreachable = items.filter((owned) => !slots.some((slot) => gameData.filterItems(null, slot).includes(owned)));
 
     expect(unreachable.map(({ item }) => `${item.name} (${item.slot})`)).toEqual([]);
   });

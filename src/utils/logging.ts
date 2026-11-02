@@ -1,5 +1,20 @@
 import type { BaseInteraction, ChatInputCommandInteraction } from 'discord.js';
 
+/** The one place the bot writes its log, so a format or destination changes here. */
+export const logger = {
+  info(message: string, ...details: unknown[]): void {
+    console.log(message, ...details);
+  },
+  warn(message: string, ...details: unknown[]): void {
+    console.warn(message, ...details);
+  },
+  error(message: string, ...details: unknown[]): void {
+    console.error(message, ...details);
+  },
+};
+
+export const MS_PER_SECOND = 1000;
+
 /** Plain values print bare; anything else is quoted, which also escapes whatever the user typed. */
 function bareOrQuoted(value: string): string {
   return /^[\w-]+$/.test(value) ? value : JSON.stringify(value);

@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { vi } from 'vitest';
 
+import { createRegistry } from '../src/commands/registry.js';
+import { createContent } from '../src/content.js';
+import { GameDataCache } from '../src/gameData.js';
 import type { BuildDetails, BuildSummary, Command, GuideSummary, Item } from '../src/types.js';
 
 export function guide(overrides: Partial<GuideSummary> = {}): GuideSummary {
@@ -89,4 +92,33 @@ export function stubTowerHub(responses: Record<string, string>) {
   vi.stubGlobal('fetch', stub);
 
   return stub;
+}
+
+/** A cache filled from a saved copy of TowerHub's responses, the way the bot fills it at startup, so tests run offline and see the same game. */
+export async function loadedGameData(): Promise<GameDataCache> {
+  stubTowerHub(towerHubResponses());
+  vi.spyOn(console, 'log').mockImplementationOnce(() => undefined);
+  const gameData = new GameDataCache();
+  await gameData.refresh();
+  vi.unstubAllGlobals();
+
+  return gameData;
+}
+
+/** Every command wired to a loaded game, with the content cache to clear between tests. */
+export async function createTestApp() {
+  const gameData = await loadedGameData();
+  const content = createContent();
+
+  return { gameData, content, registry: createRegistry(gameData, content) };
+}
+
+/** One command from a fresh app, found by name. */
+export function commandNamed(registry: ReturnType<typeof createRegistry>, name: string): Command {
+  const command = registry.find(name);
+  if (!command) {
+    throw new Error(`No /${name} command.`);
+  }
+
+  return command;
 }

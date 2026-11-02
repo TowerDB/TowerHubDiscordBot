@@ -1,5 +1,4 @@
-import { itemsOf } from '../gameData.js';
-import type { Eternal } from '../types.js';
+import type { Eternal, Item } from '../types.js';
 import { abilityBlock, NOTHING_YET } from '../utils/abilities.js';
 import { MAX_FIELD_VALUE } from '../utils/discordLimits.js';
 import { truncate } from '../utils/general.js';
@@ -7,7 +6,8 @@ import { eternalPortrait } from '../utils/images.js';
 import { eternalLink, eternalsUrl, eternalUrl, itemLink } from '../utils/towerhub.js';
 import { baseEmbed } from './general.js';
 
-export function eternalDetailEmbed(eternal: Eternal) {
+/** `items` are the eternal's own, which the caller reads from the game data. */
+export function eternalDetailEmbed(eternal: Eternal, items: Item[]) {
   const { ability } = eternal;
 
   const title = [eternal.name, eternal.title].filter(Boolean).join(' — ');
@@ -24,7 +24,7 @@ export function eternalDetailEmbed(eternal: Eternal) {
   });
 
   // Item list. Item abilities can be found using /item
-  const itemLines = itemsOf(eternal).map((item) => `\`${item.slot}\` **${itemLink(item)}**`);
+  const itemLines = items.map((item) => `\`${item.slot}\` **${itemLink(item)}**`);
   if (itemLines.length) {
     embed.addFields({ name: 'Items', value: truncate(itemLines.join('\n'), MAX_FIELD_VALUE) });
   }

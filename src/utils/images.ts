@@ -1,9 +1,11 @@
-import { config } from '../config.js';
+import { getConfig } from '../config.js';
 import type { Eternal, GuideSummary, Item } from '../types.js';
 
-const baseUrl = config.imageBaseUrl.endsWith('/') ? config.imageBaseUrl : `${config.imageBaseUrl}/`;
+function publicUrl(path: string): string {
+  const { imageBaseUrl } = getConfig();
 
-const publicUrl = (path: string): string => new URL(path, baseUrl).href;
+  return new URL(path, imageBaseUrl.endsWith('/') ? imageBaseUrl : `${imageBaseUrl}/`).href;
+}
 
 export const itemIcon = ({ slug }: Item): string => publicUrl(`images/items/${slug}.png`);
 export const eternalPortrait = ({ slug }: Pick<Eternal, 'slug'>): string => publicUrl(`images/eternals/${slug}.png`);

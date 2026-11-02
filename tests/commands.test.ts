@@ -1,14 +1,17 @@
-// Importing the registry builds every command, and the builders throw on anything Discord would
+// Creating the registry builds every command, and the builders throw on anything Discord would
 // refuse to register: bad names, descriptions over 100 characters, more than 25 choices.
 import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildCommand } from '../src/commands/build.js';
-import { eternalsCommand } from '../src/commands/eternals.js';
-import { itemCommand } from '../src/commands/item.js';
-import { randomBuildCommand } from '../src/commands/randombuild.js';
-import { commands, findCommand } from '../src/commands/registry.js';
-import { gameData } from '../src/gameData.js';
+import type { Command } from '../src/types.js';
+import { commandNamed, createTestApp } from './helpers.js';
+
+const { gameData, registry } = await createTestApp();
+const { commands } = registry;
+const buildCommand = commandNamed(registry, 'build');
+const eternalsCommand = commandNamed(registry, 'eternals');
+const itemCommand = commandNamed(registry, 'item');
+const randomBuildCommand = commandNamed(registry, 'randombuild');
 
 const byName = commands.map((command) => [command.data.name, command] as const);
 
@@ -20,7 +23,7 @@ describe('commands', () => {
   });
 
   it.each(byName)('/%s is found by its name', (name, command) => {
-    expect(findCommand(name)).toBe(command);
+    expect(registry.find(name)).toBe(command);
   });
 
   // /help shows these, so a copy-pasted usage line would teach the wrong command.
@@ -50,7 +53,7 @@ describe('commands', () => {
 });
 
 /** Runs a command with these options and returns what it replies with. */
-async function run(command: typeof itemCommand, options: Record<string, string | null>) {
+async function run(command: Command, options: Record<string, string | null>) {
   const reply = vi.fn();
   const interaction = { options: { getString: (name: string) => options[name] ?? null }, reply };
   await command.execute(interaction as unknown as ChatInputCommandInteraction);
@@ -59,7 +62,7 @@ async function run(command: typeof itemCommand, options: Record<string, string |
 }
 
 /** Runs autocomplete with `focused` being typed, and returns the choices it offers. */
-async function suggest(command: typeof itemCommand, focused: { name: string; value: string }, options: Record<string, string | null> = {}) {
+async function suggest(command: Command, focused: { name: string; value: string }, options: Record<string, string | null> = {}) {
   const respond = vi.fn();
   const interaction = {
     options: {
@@ -95,7 +98,7 @@ describe('/item', () => {
   it('suggests Echo and every eternal for the eternal option', async () => {
     const choices = await suggest(itemCommand, { name: 'eternal', value: '' });
 
-    expect(choices.map((choice) => choice.value)).toEqual(['echo', ...gameData().eternals.map((eternal) => eternal.slug)]);
+    expect(choices.map((choice) => choice.value)).toEqual(['echo', ...gameData.get().eternals.map((eternal) => eternal.slug)]);
   });
 
   it('narrows name suggestions to the chosen eternal and slot', async () => {
@@ -131,7 +134,7 @@ describe('/randombuild', () => {
   it.each(Array.from({ length: 50 }, (_, roll) => [roll]))('rolls a crown, an amulet and two different weapons, none out of rotation (roll %i)', async () => {
     const { embeds } = await run(randomBuildCommand, {});
     const lines: string[] = embeds[0].data.description.split('\n');
-    const benched = gameData().eternals.filter((eternal) => !eternal.isActive).map((eternal) => eternal.name);
+    const benched = gameData.get().eternals.filter((eternal) => !eternal.isActive).map((eternal) => eternal.name);
 
     expect(lines.map((line) => line.split('`')[1])).toEqual(['Crown', 'Amulet', 'Weapon', 'Weapon']);
     expect(new Set(lines).size).toBe(4);

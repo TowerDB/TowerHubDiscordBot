@@ -4,6 +4,7 @@ import type { Source } from '../content.js';
 import { ephemeralError } from '../embeds/general.js';
 import { shareable } from '../share.js';
 import type { ListFilters, PagedResults } from '../types.js';
+import { logger } from './logging.js';
 import { MAX_CHOICE_NAME, MAX_CHOICES } from './discordLimits.js';
 import { truncate } from './general.js';
 import { TowerHubBusyError } from './towerhub.js';
@@ -40,7 +41,7 @@ export function clearSuggestions(): void {
 /** With no answer Discord shows "Loading options failed", which says less than an empty list and looks like a bug. */
 async function respondLive(interaction: AutocompleteInteraction, key: string, load: () => Promise<Choice[]>): Promise<void> {
   const choices = await suggestions.get(key, load).catch((error: unknown) => {
-    console.warn(`Suggestions for /${interaction.commandName} failed:`, error);
+    logger.warn(`Suggestions for /${interaction.commandName} failed:`, error);
 
     return [];
   });
@@ -127,7 +128,7 @@ export async function replyWithResults<Summary extends { slug: string }, Details
     reply = embed ? shareable(embed) : ephemeralError(title, description);
   }
   catch (error) {
-    console.error(`/${interaction.commandName} could not get an answer from TowerHub:`, error);
+    logger.error(`/${interaction.commandName} could not get an answer from TowerHub:`, error);
     reply = error instanceof TowerHubBusyError
       ? ephemeralError('Too many searches', 'A lot of people are searching right now. Please try again in a minute.')
       : ephemeralError('TowerHub unavailable', UNAVAILABLE);
