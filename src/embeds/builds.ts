@@ -19,7 +19,7 @@ function buildLine({ item, eternal }: OwnedItem): string {
 
 export function randomBuildEmbed(build: OwnedItem[]) {
   return baseEmbed('Random Build', build.map(buildLine).join('\n'))
-    .setFooter({ text: '/item name: for any item\'s abilities · run it again to reroll' });
+    .setFooter({ text: '/item name: for any item\'s abilities - run it again to reroll' });
 }
 
 function loadoutLine(item: Item): string {
@@ -40,7 +40,7 @@ function outdated({ patch, changes, unavailableItems, outOfRotationItems }: Buil
 export function buildEmbed(build: BuildDetails) {
   const { crown, amulet, firstWeapon, secondWeapon, anchor, consumable } = build.loadout;
   const summary = escapeText(truncate(flattenMarkdown(build.summary), MAX_SUMMARY));
-  const body = [`by ${escapeText(build.author)} · Patch ${build.patch}`, summary, outdated(build)].filter(Boolean).join('\n\n');
+  const body = [`by ${escapeText(build.author)} - Patch ${build.patch}`, summary, outdated(build)].filter(Boolean).join('\n\n');
   const [setBonus] = build.setBonuses;
 
   return baseEmbed(escapeText(build.name), body)
@@ -58,7 +58,7 @@ export function buildEmbed(build: BuildDetails) {
 }
 
 function buildEntry(build: BuildSummary): string {
-  const gear = build.items.slice(0, GEAR_COUNT).map(({ name }) => name).join(' · ');
+  const gear = build.items.slice(0, GEAR_COUNT).map(({ name }) => name).join(' - ');
 
   return `**${buildLink(build)}** - by ${escapeText(build.author)}\n${gear}`;
 }

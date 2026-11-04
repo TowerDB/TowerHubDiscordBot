@@ -268,7 +268,7 @@ describe('item details', () => {
   it('labels a weapon\'s abilities by their order, and nothing else\'s', () => {
     const abilities = [ability({ name: 'Swing' }), ability({ name: 'Lunge' })];
 
-    expect(itemEmbed({ item: item({ slot: 'Weapon', abilities }) }).fields?.map((field) => field.name)).toEqual(['Primary · Swing', 'Secondary · Lunge']);
+    expect(itemEmbed({ item: item({ slot: 'Weapon', abilities }) }).fields?.map((field) => field.name)).toEqual(['Primary - Swing', 'Secondary - Lunge']);
     expect(itemEmbed({ item: item({ abilities: abilities.slice(0, 1) }) }).fields?.map((field) => field.name)).toEqual(['Swing']);
   });
 
@@ -283,7 +283,7 @@ describe('item details', () => {
       }),
     });
 
-    expect(description).toBe('Consumable · Stacks to 4\n\n*It tastes awful.*');
+    expect(description).toBe('Consumable - Stacks to 4\n\n*It tastes awful.*');
     expect(fields?.[0]?.value).toBe('Regain 125 Health');
   });
 
@@ -295,7 +295,7 @@ describe('guides', () => {
 
     expect(title).toBe('Dahla Basics');
     expect(url).toBe('https://towerhub.io/guides/dahla-basics');
-    expect(description).toBe('Community · by Ravah · 5 min read\n\nHow to play her early rounds.');
+    expect(description).toBe('Community - by Ravah - 5 min read\n\nHow to play her early rounds.');
     expect(timestamp).toBe('2026-10-20T12:00:00.000Z');
   });
 
@@ -306,13 +306,13 @@ describe('guides', () => {
   });
 
   it('still renders with no summary', () => {
-    expect(guideEmbed(guide({ summary: '' })).data.description).toBe('Community · by Ravah · 5 min read');
+    expect(guideEmbed(guide({ summary: '' })).data.description).toBe('Community - by Ravah - 5 min read');
   });
 
   it('lists each with a link', () => {
     const { description } = guideListEmbed({ items: [guide()], total: 1 }, {}).data;
 
-    expect(description).toContain('**[Dahla Basics](https://towerhub.io/guides/dahla-basics)**\nCommunity · by Ravah · 5 min read');
+    expect(description).toContain('**[Dahla Basics](https://towerhub.io/guides/dahla-basics)**\nCommunity - by Ravah - 5 min read');
   });
 });
 
@@ -322,7 +322,7 @@ describe('builds', () => {
 
     expect(title).toBe('Bleed Dahla');
     expect(url).toBe('https://towerhub.io/builds/bleed-dahla');
-    expect(description).toBe('by Ravah · Patch 0.23.0\n\nStack bleed, then leave.');
+    expect(description).toBe('by Ravah - Patch 0.23.0\n\nStack bleed, then leave.');
     expect(fields?.[0]?.value.split('\n')).toHaveLength(6);
     expect(fields?.[0]?.value).toContain('`Crown`: [Vanish Crown](https://towerhub.io/items/vanish-crown)');
   });
@@ -353,13 +353,13 @@ describe('builds', () => {
   });
 
   it('still renders with nothing left of its summary', () => {
-    expect(buildEmbed(build({ summary: '![](https://example.com/a.png)' })).data.description).toBe('by Ravah · Patch 0.23.0');
+    expect(buildEmbed(build({ summary: '![](https://example.com/a.png)' })).data.description).toBe('by Ravah - Patch 0.23.0');
   });
 
   it('lists each with its gear, leaving out the anchor and consumable', () => {
     const { description } = buildListEmbed({ items: [buildSummary()], total: 1 }, {}, []).data;
 
-    expect(description).toContain('**[Bleed Dahla](https://towerhub.io/builds/bleed-dahla)** - by Ravah\nVanish Crown · Petal Dance Amulet · Dancing Blade · Throwing Knives');
+    expect(description).toContain('**[Bleed Dahla](https://towerhub.io/builds/bleed-dahla)** - by Ravah\nVanish Crown - Petal Dance Amulet - Dancing Blade - Throwing Knives');
     expect(description).not.toContain('Some Anchor');
   });
 });
@@ -391,7 +391,7 @@ describe('text written by users', () => {
   it('a name in the list\'s title is escaped too', () => {
     const { title } = guideListEmbed({ items: [guide()], total: 1 }, { author: 'dark_knight_' }).data;
 
-    expect(title).toBe('Guides · by dark\\_knight\\_');
+    expect(title).toBe('Guides - by dark\\_knight\\_');
   });
 
   // Escaping doubles text like this, which is the most a page can hold.
@@ -443,7 +443,7 @@ describe('a new eternal with its text still to come', () => {
 
   it('still renders as the owner of an item', () => {
     expect(itemEmbed({ item: item({ eternalSlug: 'newcomer' }), eternal }).description)
-      .toBe('Crown · **[Newcomer](https://towerhub.io/eternals/newcomer)**');
+      .toBe('Crown - **[Newcomer](https://towerhub.io/eternals/newcomer)**');
   });
 
   it('still renders an ability with nothing to say', () => {

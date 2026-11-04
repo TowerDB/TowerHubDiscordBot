@@ -8,7 +8,7 @@ import { baseEmbed, commonLabels, resultsEmbed } from './general.js';
 const MAX_LISTED_SUMMARY = 120;
 
 function byline({ category, author, readingMinutes }: GuideSummary): string {
-  return [category, `by ${escapeText(author)}`, `${readingMinutes} min read`].join(' · ');
+  return [category, `by ${escapeText(author)}`, `${readingMinutes} min read`].join(' - ');
 }
 
 function guideEntry(guide: GuideSummary): string {

@@ -29,7 +29,7 @@ export function eternalDetailEmbed(eternal: Eternal, items: Item[]) {
     embed.addFields({ name: 'Items', value: truncate(itemLines.join('\n'), MAX_FIELD_VALUE) });
   }
 
-  return embed.setFooter({ text: "/item for an item's abilities · /glossary explains any tag" });
+  return embed.setFooter({ text: "/item for an item's abilities - /glossary explains any tag" });
 }
 
 export function eternalListEmbed(eternals: Eternal[]) {

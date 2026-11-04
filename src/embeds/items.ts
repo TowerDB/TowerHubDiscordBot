@@ -15,7 +15,7 @@ const WEAPON_INPUTS = ['Primary', 'Secondary'];
 function abilityField(item: Item, ability: Ability, index: number) {
   const label = item.slot === 'Weapon' ? WEAPON_INPUTS[index] : undefined;
   return {
-    name: label ? `${label} · ${ability.name}` : ability.name,
+    name: label ? `${label} - ${ability.name}` : ability.name,
     value: truncate(abilityBlock(ability), MAX_FIELD_VALUE),
   };
 }
@@ -23,7 +23,7 @@ function abilityField(item: Item, ability: Ability, index: number) {
 function detailEmbed({ item, eternal }: OwnedItem) {
   const owner = eternal && [`**${eternalLink(eternal)}**`, eternal.title].filter(Boolean).join(', ');
   const stacks = item.maxStackCount > 1 ? `Stacks to ${item.maxStackCount}` : undefined;
-  const subtitle = [item.slot, owner, stacks].filter(Boolean).join(' · ');
+  const subtitle = [item.slot, owner, stacks].filter(Boolean).join(' - ');
 
   // Consumables repeat their ability's description as their own, and it's shown with the ability.
   const repeated = item.abilities.some((ability) => ability.description === item.description);
@@ -56,10 +56,10 @@ export function itemDetailEmbeds(matches: OwnedItem[]) {
   return embeds;
 }
 
-/** Titled by the eternal and slot options that narrowed it down, e.g. "Echo · Weapons", and linked to the same list on TowerHub. */
+/** Titled by the eternal and slot options that narrowed it down, e.g. "Echo - Weapons", and linked to the same list on TowerHub. */
 export function itemListEmbed(matches: OwnedItem[], owner: ItemOwner | undefined, slot: string | null) {
   const slotName = slot ? capitalize(slot) : undefined;
-  const label = [owner?.name, slotName && `${slotName}s`].filter(Boolean).join(' · ');
+  const label = [owner?.name, slotName && `${slotName}s`].filter(Boolean).join(' - ');
   const options = matches.map(({ item, eternal }) => `\`${item.slot}\` ${itemLink(item)}${eternal ? ` — *${eternal.name}*` : ''}`).join('\n');
 
   // TowerHub has no filter for Echo, so an Echo list opens on everything in the slot.

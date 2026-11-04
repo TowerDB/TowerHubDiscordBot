@@ -100,7 +100,7 @@ describe('/guide', () => {
       search: 'bleed',
       pageSize: '10',
     });
-    expect(title).toBe('Guides · Community · by Ravah · Top');
+    expect(title).toBe('Guides - Community - by Ravah - Top');
     expect(Object.fromEntries(new URL(url).searchParams)).toEqual({ category: 'community', author: 'Ravah', sort: 'top', search: 'bleed' });
   });
 
@@ -250,7 +250,7 @@ describe('/build', () => {
       sort: 'trending',
       pageSize: '10',
     });
-    expect(title).toBe('Builds · Dahla · Ringblade · Trending');
+    expect(title).toBe('Builds - Dahla - Ringblade - Trending');
     expect(Object.fromEntries(new URL(url).searchParams)).toEqual({ eternal: 'dahla', item: 'ringblade', sort: 'trending' });
   });
 

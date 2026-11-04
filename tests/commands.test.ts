@@ -126,7 +126,7 @@ describe('/item', () => {
   it('titles a list by the name of whose items they are', async () => {
     const { embeds } = await run(itemCommand, { eternal: 'echo', slot: 'weapon' });
 
-    expect(embeds[0].data.title).toBe('Echo · Weapons');
+    expect(embeds[0].data.title).toBe('Echo - Weapons');
   });
 });
 

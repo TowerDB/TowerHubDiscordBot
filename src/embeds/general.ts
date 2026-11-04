@@ -34,7 +34,7 @@ export function ephemeralError(title: string, description: string): { embeds: Em
 export function resultsEmbed(labels: Array<string | null | undefined>, entries: string[], total: number, url: string): EmbedBuilder {
   const count = total > entries.length ? `${total} found, showing ${entries.length}.` : `${total} found.`;
 
-  return baseEmbed(labels.filter(Boolean).join(' · '), `${count}\n\n${entries.join('\n\n')}`).setURL(url);
+  return baseEmbed(labels.filter(Boolean).join(' - '), `${count}\n\n${entries.join('\n\n')}`).setURL(url);
 }
 
 /** The labels every list shares, for after the ones only it has. */
