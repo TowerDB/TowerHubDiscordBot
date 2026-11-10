@@ -234,7 +234,7 @@ The embed thumbnail points at the same file in this repo on GitHub, under `IMAGE
 (default: `https://raw.githubusercontent.com/TowerDB/TowerHubDiscordBot/main/`). Discord fetches
 it once and caches it. `npm test` checks every slug in the saved TowerHub data; the bot itself
 doesn't, and a missing file just leaves the embed without a thumbnail. That's what a new item
-gets until someone adds its PNG, and what Refill Consumables gets today.
+gets until someone adds its PNG.
 
 To add one, drop a PNG into `images/`, named after the slug; anything about 256px across is plenty,
 since Discord shows thumbnails at 80px. **It only shows up once it's on `main`** (or whichever

@@ -47,11 +47,10 @@ describe('items', () => {
     expect(duplicates(items.map(({ item }) => item.slug))).toEqual([]);
   });
 
-  // Refill Consumables never had one, and an embed simply goes without a missing thumbnail.
   it('have icons, named after their slugs', () => {
     const missing = items.filter(({ item }) => !existsSync(resolve(root, `images/items/${item.slug}.png`)));
 
-    expect(missing.map(({ item }) => item.slug)).toEqual(['refill-consumables']);
+    expect(missing.map(({ item }) => item.slug)).toEqual([]);
   });
 
   it('are each reachable through one of /item\'s slot choices', () => {
