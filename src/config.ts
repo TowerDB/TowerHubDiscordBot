@@ -1,47 +1,55 @@
-import 'dotenv/config';
-
-function required(name: string): string {
-  const value = process.env[name];
+function required(env: NodeJS.ProcessEnv, name: string): string {
+  const value = env[name];
   if (!value || value.trim() === '') {
     throw new Error(`Missing required environment variable ${name}. Copy .env.example to .env and fill it in.`);
   }
-  
+
   return value.trim();
 }
 
-function optional(name: string, fallback: string): string {
-  const value = process.env[name];
+function optional(env: NodeJS.ProcessEnv, name: string, fallback: string): string {
+  const value = env[name];
   return value && value.trim() !== '' ? value.trim() : fallback;
 }
 
 /** Placeholder ids from .env.example are not real snowflakes; treat them as unset. */
-function snowflake(name: string): string | undefined {
-  const value = (process.env[name] ?? '').trim();
+function snowflake(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const value = (env[name] ?? '').trim();
   return /^[1-9]\d{16,19}$/.test(value) ? value : undefined;
 }
 
 /** Counts must be whole and positive; anything else falls back rather than disabling the limit. */
-function positiveInt(name: string, fallback: number): number {
-  const parsed = Number.parseInt((process.env[name] ?? '').trim(), 10);
+function positiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const parsed = Number.parseInt((env[name] ?? '').trim(), 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function parseColor(raw: string): number {
-  const parsed = Number.parseInt(raw.replace(/^#/, ''), 16);
-  return Number.isNaN(parsed) ? 0xe25822 : parsed;
+/** Reads the given environment and throws if a required variable is missing. Nothing runs on import. */
+export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    token: required(env, 'DISCORD_TOKEN'),
+    guildId: snowflake(env, 'GUILD_ID'),
+    /** Slash commands are separate from button clicks */
+    maxRequestsPerServer: positiveInt(env, 'MAX_REQUESTS_PER_SERVER_PER_MINUTE', 50),
+    maxRequestsPerUser: positiveInt(env, 'MAX_REQUESTS_PER_USER_PER_MINUTE', 10),
+    maxButtonClicksPerServer: positiveInt(env, 'MAX_BUTTON_CLICKS_PER_SERVER_PER_MINUTE', 75),
+    maxButtonClicksPerUser: positiveInt(env, 'MAX_BUTTON_CLICKS_PER_USER_PER_MINUTE', 10),
+    /** Suggestions are one call per keystroke, so they're limited apart from commands. */
+    maxSuggestionsPerUser: positiveInt(env, 'MAX_SUGGESTIONS_PER_USER_PER_MINUTE', 60),
+    imageBaseUrl: optional(env, 'IMAGE_BASE_URL', 'https://raw.githubusercontent.com/TowerDB/TowerHubDiscordBot/main/'),
+    towerHubUrl: optional(env, 'TOWERHUB_URL', 'https://towerhub.io'),
+    /** Lets TowerHub leave the bot's reads out of its per-address limits, as every server's traffic comes from one address. */
+    towerHubBotKey: required(env, 'TOWERHUB_BOT_KEY'),
+  } as const;
 }
 
-export const config = {
-  token: required('DISCORD_TOKEN'),
-  guildId: snowflake('GUILD_ID'),
-  faqChannelId: optional('FAQ_CHANNEL_ID', '000000000000000001'),
-  playtestChannelId: optional('PLAYTEST_CHANNEL_ID', '000000000000000002'),
-  embedColor: parseColor(optional('EMBED_COLOR', '#E25822')),
-  maxRequests: positiveInt('MAX_REQUESTS_PER_MINUTE', 10),
-  maxRequestsPerUser: positiveInt('MAX_REQUESTS_PER_USER_PER_MINUTE', 5),
-} as const;
+export type Config = ReturnType<typeof loadConfig>;
 
-/** Direct jump link. Needs a real GUILD_ID; without one the channel mention stands alone. */
-export function channelUrl(channelId: string): string | undefined {
-  return config.guildId ? `https://discord.com/channels/${config.guildId}/${channelId}` : undefined;
+let loaded: Config | undefined;
+
+/** The process's config, read from the environment on first use so importing a module never throws. */
+export function getConfig(): Config {
+  loaded ??= loadConfig();
+
+  return loaded;
 }

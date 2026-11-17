@@ -1,65 +1,42 @@
-import { MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
 
-import { glossary } from '../data.js';
-import { baseEmbed, errorEmbed } from '../embeds.js';
-import { findBest, findSuggestions, keysOf, respondWithMatches } from '../search.js';
+import { ephemeral } from '../embeds/general.js';
+import { glossaryListEmbed, glossaryTermEmbed } from '../embeds/glossary.js';
+import type { GameDataCache } from '../gameData.js';
+import { MAX_QUERY_LENGTH, replyWithBest, respondWithMatches } from '../utils/search.js';
 import type { Command, GlossaryEntry } from '../types.js';
 
-const keys = (entry: GlossaryEntry) => keysOf(entry, entry.term);
+export const keys = (entry: GlossaryEntry) => [entry.name];
 
-export const glossaryCommand: Command = {
-  data: new SlashCommandBuilder().setName('glossary').setDescription('Defines a game term.')
-    .addStringOption((option) =>
-      option.setName('term').setDescription('The term to define').setAutocomplete(true),
-    ).toJSON(),
-  usage: '/glossary [term]',
-  examples: ['/glossary term:fortitude', '/glossary term:crushing', '/glossary'],
+export function createGlossaryCommand(gameData: GameDataCache): Command {
+  return {
+    data: new SlashCommandBuilder().setName('glossary').setDescription('Defines a game term.')
+      .addStringOption((option) =>
+        option.setName('term').setDescription('The term to define').setAutocomplete(true).setMaxLength(MAX_QUERY_LENGTH),
+      ).toJSON(),
+    usage: '/glossary [term]',
+    examples: ['/glossary term:fortitude', '/glossary term:crushing', '/glossary'],
 
-  async autocomplete(interaction) {
-    await respondWithMatches(interaction, glossary, keys, (entry) => ({ name: entry.term, value: entry.term }));
-  },
+    async autocomplete(interaction) {
+      await respondWithMatches(interaction, gameData.get().glossary, keys, (entry) => ({ name: entry.name, value: entry.name }));
+    },
 
-  async execute(interaction) {
-    const query = interaction.options.getString('term');
+    async execute(interaction) {
+      const { glossary } = gameData.get();
+      const query = interaction.options.getString('term');
 
-    if (!query) {
-      const terms = glossary.map((entry) => `\`${entry.term}\``).join(', ');
-      await interaction.reply({
-        embeds: [baseEmbed('Glossary', `**${glossary.length} terms:** ${terms}`)],
-        flags: MessageFlags.Ephemeral,
+      if (!query) {
+        await interaction.reply(ephemeral(glossaryListEmbed(glossary)));
+
+        return;
+      }
+
+      await replyWithBest(interaction, query, glossary, keys, {
+        plural: 'terms',
+        label: (entry) => entry.name,
+        render: glossaryTermEmbed,
+        notFound: { title: 'Term not found', description: `No entry for \`${query}\`. Run /glossary to see all ${glossary.length} terms.` },
       });
-
-      return;
-    }
-
-    const matches = findBest(query, glossary, keys);
-
-    if (matches.length === 1) {
-      const match = matches[0] as GlossaryEntry;
-      await interaction.reply({ embeds: [baseEmbed(match.term, match.definition)] });
-
-      return;
-    }
-
-    // Several terms match equally
-    if (matches.length > 1) {
-      const options = matches.map((entry) => `\`${entry.term}\``).join(', ');
-      await interaction.reply({
-        embeds: [baseEmbed('Multiple terms match', `\`${query}\` matches several: ${options}`)],
-        flags: MessageFlags.Ephemeral,
-      });
-
-      return;
-    }
-
-    const suggestions = findSuggestions(query, glossary, keys);
-    const hint = suggestions.length ? 
-      `Did you mean: ${suggestions.map((entry) => `**${entry.term}**`).join(', ')}?` : 
-      `Run /glossary to see all ${glossary.length} terms.`;
-      
-    await interaction.reply({
-      embeds: [errorEmbed('Term not found', `No entry for \`${query}\`. ${hint}`)],
-      flags: MessageFlags.Ephemeral,
-    });
-  },
-};
+    },
+  };
+}

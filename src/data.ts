@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { keysOf } from './search.js';
-import type { Eternal, GlossaryEntry, Item } from './types.js';
+import type { FaqTopic, SocialLink } from './types.js';
+import { MAX_FIELD_VALUE, MAX_MESSAGE_CHARS } from './utils/discordLimits.js';
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 
@@ -17,36 +17,24 @@ function load<T>(file: string): T[] {
   return parsed as T[];
 }
 
-export const eternals: Eternal[] = load<Eternal>('eternals.json');
-export const glossary: GlossaryEntry[] = load<GlossaryEntry>('glossary.json');
+export const faq: FaqTopic[] = load<FaqTopic>('faq.json');
+export const socials: SocialLink[] = load<SocialLink>('socials.json');
 
-const allItems: Item[] = load<Item>('items.json');
-const itemsById = new Map(allItems.map((item) => [item.id, item]));
+// /faq shows a topic as one embed. Discord rejects the whole reply if any of these limits is
+// exceeded, so catch it at startup rather than when someone runs the command.
+for (const { topic, entries } of faq) {
+  if (entries.length === 0 || entries.length > 10) {
+    throw new Error(`FAQ topic "${topic}" has ${entries.length} questions; it needs 1 to 10.`);
+  }
 
-export interface OwnedItem {
-  item: Item;
-  eternal?: Eternal;
-}
-
-const ownerById = new Map<string, Eternal>();
-for (const eternal of eternals) {
-  for (const id of eternal.items) {
-    if (!itemsById.has(id)) {
-      throw new Error(`${eternal.id} references unknown item "${id}" in items.json`);
+  for (const { question, answer } of entries) {
+    if (answer.length > MAX_FIELD_VALUE) {
+      throw new Error(`FAQ answer to "${question}" is ${answer.length} characters; the limit is ${MAX_FIELD_VALUE}.`);
     }
-    ownerById.set(id, eternal);
+  }
+
+  const length = entries.reduce((total, qa, index) => total + `${index + 1}. ${qa.question}`.length + qa.answer.length, topic.length);
+  if (length > MAX_MESSAGE_CHARS) {
+    throw new Error(`FAQ topic "${topic}" is ${length} characters; one topic must fit in ${MAX_MESSAGE_CHARS}.`);
   }
 }
-
-export const items: OwnedItem[] = allItems.map((item) => {
-  const eternal = ownerById.get(item.id);
-  return eternal ? { item, eternal } : { item };
-});
-
-/** The four items an eternal carries, resolved from their ids. */
-export function itemsOf(eternal: Eternal): Item[] {
-  return eternal.items.map((id) => itemsById.get(id) as Item);
-}
-
-/** How an eternal is looked up, shared by /eternals and /item. */
-export const eternalKeys = (eternal: Eternal): string[] => keysOf(eternal, eternal.id, eternal.name, eternal.title);
